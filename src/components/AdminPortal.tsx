@@ -166,20 +166,36 @@ export const AdminPortal: React.FC = () => {
     }
   }, [token, activeTab, searchTerm, categoryFilter, paymentFilter, checkInFilter]);
 
-  // Confirm Payment
+  // Emergency Admin Manual Payment Override (Audited)
   const handleConfirmPayment = async (attendeeId: number) => {
     if (!token) return;
     setActionMessage(null);
+
+    const reason = window.prompt(
+      'EMERGENCY ADMIN OVERRIDE:\nAutomatic gateway verification is the primary method.\nEnter the mandatory audit justification / bank UTR reference for manual confirmation (min 5 characters):',
+      ''
+    );
+
+    if (!reason || reason.trim().length < 5) {
+      alert('Manual override aborted: A mandatory audit justification of at least 5 characters is required.');
+      return;
+    }
+
     try {
       const res = await fetch(`/api/admin/attendees/${attendeeId}/confirm-payment`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: reason.trim() }),
       });
       const data = await res.json();
       if (res.ok) {
         setActionMessage(`✅ ${data.message}`);
         // Refresh local attendee in modal and list
-        setSelectedAttendee((prev) => (prev ? { ...prev, payment_status: 'PAID' } : null));
+        const adminEmail = adminUser?.email || 'admin@msap.org';
+        setSelectedAttendee((prev) => (prev ? { ...prev, payment_status: 'PAID', payment_confirmed_by: `MANUAL_OVERRIDE_BY_${adminEmail} (Reason: ${reason.trim()})` } : null));
         fetchAttendeesList();
         fetchDashboardStats();
       } else {
@@ -187,6 +203,43 @@ export const AdminPortal: React.FC = () => {
       }
     } catch {
       setActionMessage('❌ Network error confirming payment.');
+    }
+  };
+
+  // Admin Refund & Pass Revocation
+  const handleRefundPayment = async (attendeeId: number) => {
+    if (!token) return;
+    const reason = window.prompt(
+      'REFUND PAYMENT & REVOKE ENTRY PASS:\nProvide a reason for refunding this payment and revoking the admission pass:',
+      ''
+    );
+    if (!reason || reason.trim().length < 5) {
+      alert('Refund aborted: A reason (minimum 5 characters) is mandatory.');
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/admin/attendees/${attendeeId}/refund`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage(`⚠️ ${data.message}`);
+        setSelectedAttendee((prev) =>
+          prev ? { ...prev, payment_status: 'REFUNDED', entry_pass_status: 'REVOKED' } : null
+        );
+        fetchAttendeesList();
+        fetchDashboardStats();
+      } else {
+        setActionMessage(`❌ ${data.error || 'Failed to refund payment.'}`);
+      }
+    } catch {
+      setActionMessage('❌ Network error issuing refund.');
     }
   };
 
@@ -521,7 +574,7 @@ export const AdminPortal: React.FC = () => {
               <div className="p-4 rounded-2xl bg-[#171B26] border border-[#10B981]/30 flex flex-col gap-1">
                 <span className="text-[11px] font-mono-code text-[#10B981] uppercase font-bold">TOTAL PAID</span>
                 <span className="text-3xl font-bold font-display-title text-[#10B981]">
-                  {stats?.total_paid ?? '...'}
+                  {(stats?.successful_payments ?? (stats as unknown as Record<string, number>)?.total_paid) ?? '...'}
                 </span>
                 <span className="text-[10px] text-[#94A3B8]">Confirmed UPI payments</span>
               </div>
@@ -530,7 +583,7 @@ export const AdminPortal: React.FC = () => {
               <div className="p-4 rounded-2xl bg-[#171B26] border border-amber-500/30 flex flex-col gap-1">
                 <span className="text-[11px] font-mono-code text-amber-300 uppercase font-bold">PAYMENT PENDING</span>
                 <span className="text-3xl font-bold font-display-title text-amber-300">
-                  {stats?.payment_pending ?? '...'}
+                  {(stats?.pending_payments ?? (stats as unknown as Record<string, number>)?.payment_pending) ?? '...'}
                 </span>
                 <span className="text-[10px] text-[#94A3B8]">Awaiting council confirmation</span>
               </div>
@@ -661,8 +714,12 @@ export const AdminPortal: React.FC = () => {
                 className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
               >
                 <option value="ALL">All Payments</option>
-                <option value="PAID">Paid</option>
-                <option value="PENDING">Pending</option>
+                <option value="PAID">Paid (Active Pass)</option>
+                <option value="PENDING">Pending Approval</option>
+                <option value="PROCESSING">Processing Gateway</option>
+                <option value="FAILED">Failed</option>
+                <option value="EXPIRED">Expired</option>
+                <option value="REFUNDED">Refunded</option>
               </select>
 
               {/* Check-In Filter */}
@@ -720,7 +777,7 @@ export const AdminPortal: React.FC = () => {
                       attendees.map((a) => (
                         <tr key={a.id} className="hover:bg-[#1C1F2A] transition-colors">
                           <td className="px-4 py-3 font-mono-code font-bold text-[#7BD0FF] whitespace-nowrap">
-                            {a.ticket_id}
+                            {a.ticket_id || <span className="text-amber-400 font-normal text-[11px]">PENDING PAYMENT</span>}
                           </td>
                           <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
                             {a.full_name}
@@ -789,7 +846,7 @@ export const AdminPortal: React.FC = () => {
                   <div className="flex items-center justify-between border-b border-[#262A35] pb-3">
                     <div className="flex items-center gap-2">
                       <span className="font-mono-code font-bold text-lg text-[#7BD0FF]">
-                        {selectedAttendee.ticket_id}
+                        {selectedAttendee.ticket_id || 'PENDING (NO PASS)'}
                       </span>
                       <span
                         className={`px-2 py-0.5 rounded font-mono-code text-xs font-bold ${
@@ -852,25 +909,49 @@ export const AdminPortal: React.FC = () => {
                       </span>
                     </div>
 
-                    {selectedAttendee.payment_status === 'PENDING' ? (
+                    {selectedAttendee.payment_status === 'PENDING' || selectedAttendee.payment_status === 'PROCESSING' ? (
                       <div className="flex flex-col gap-2 mt-2">
                         <p className="text-xs text-amber-300/90 leading-relaxed">
-                          ⚠️ Attendee payment is pending verification. Confirming payment will activate their unique QR entry code and digital entry pass.
+                          ⚠️ Primary confirmation must occur via payment gateway webhook. Use the button below only as an <strong>Emergency Admin Override</strong> with a mandatory audit justification.
                         </p>
                         <button
                           onClick={() => handleConfirmPayment(selectedAttendee.id)}
-                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-bold text-xs shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-amber-700 text-white font-bold text-xs shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
                         >
-                          <span className="material-symbols-outlined text-sm">check_circle</span>
-                          <span>CONFIRM PAYMENT (PENDING → PAID)</span>
+                          <span className="material-symbols-outlined text-sm">warning</span>
+                          <span>EMERGENCY ADMIN OVERRIDE & ISSUE PASS</span>
+                        </button>
+                      </div>
+                    ) : selectedAttendee.payment_status === 'PAID' ? (
+                      <div className="flex flex-col gap-2 mt-1">
+                        <div className="text-xs flex items-center gap-1.5">
+                          {selectedAttendee.payment_confirmed_by?.includes('MANUAL_OVERRIDE') ? (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono-code font-bold text-[11px] flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs">admin_panel_settings</span>
+                              EMERGENCY MANUAL OVERRIDE (Audited)
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-mono-code font-bold text-[11px] flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs">verified</span>
+                              GATEWAY VERIFIED (Automated)
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-400">
+                          {selectedAttendee.payment_confirmed_by || 'Confirmed'} • Pass is active for gate scanning.
+                        </p>
+                        <button
+                          onClick={() => handleRefundPayment(selectedAttendee.id)}
+                          className="w-full py-2 mt-1 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined text-sm">cancel</span>
+                          <span>REFUND & REVOKE PASS</span>
                         </button>
                       </div>
                     ) : (
-                      <div className="text-xs text-[#10B981] flex items-center gap-1.5 mt-1">
-                        <span className="material-symbols-outlined text-sm">verified</span>
-                        <span>
-                          Payment confirmed by {selectedAttendee.payment_confirmed_by || 'Admin'}. Pass is active for gate scanning.
-                        </span>
+                      <div className="text-xs text-rose-400 flex items-center gap-1.5 mt-1 font-mono-code font-bold">
+                        <span className="material-symbols-outlined text-sm">block</span>
+                        <span>STATUS: {selectedAttendee.payment_status} — ENTRY PASS REVOKED</span>
                       </div>
                     )}
                   </div>
@@ -1078,22 +1159,22 @@ export const AdminPortal: React.FC = () => {
                     </div>
                   )}
 
-                  {/* CASE 3: PAYMENT PENDING */}
-                  {scanResult.status === 'PAYMENT_PENDING' && scanResult.attendee && (
+                  {/* CASE 3: PAYMENT NOT CONFIRMED */}
+                  {scanResult.status === 'PAYMENT_NOT_CONFIRMED' && scanResult.attendee && (
                     <div className="flex flex-col gap-4">
                       <div className="p-3.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 flex items-center gap-2">
                         <span className="material-symbols-outlined text-2xl">hourglass_top</span>
                         <div className="flex flex-col">
                           <span className="font-bold text-sm font-mono-code">⚠️ PAYMENT NOT CONFIRMED</span>
                           <span className="text-xs text-white/90">
-                            Ticket registered, but ₹350 fee has not been marked as PAID in MySQL.
+                            Ticket registered, but ₹350 fee has not been verified or marked as PAID in MySQL.
                           </span>
                         </div>
                       </div>
 
                       <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2 text-xs">
                         <div>Attendee: <strong className="text-white text-sm">{scanResult.attendee.full_name}</strong></div>
-                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id}</strong></div>
+                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id || 'PENDING (NO PASS)'}</strong></div>
                       </div>
 
                       <button
@@ -1103,8 +1184,21 @@ export const AdminPortal: React.FC = () => {
                         }}
                         className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#0B0F19] font-bold text-xs cursor-pointer shadow-md transition-all"
                       >
-                        Confirm Payment Now & Enable Admission
+                        Confirm Payment Now & Issue Entry Pass
                       </button>
+                    </div>
+                  )}
+
+                  {/* CASE 4: ENTRY PASS REVOKED */}
+                  {scanResult.status === 'ENTRY_PASS_REVOKED' && (
+                    <div className="p-5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E] text-[#F43F5E] flex items-center gap-3">
+                      <span className="material-symbols-outlined text-3xl">block</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-base font-mono-code">⛔ ENTRY PASS REVOKED</span>
+                        <span className="text-xs text-white/80 mt-1">
+                          {scanResult.message || 'This ticket pass has been revoked or invalidated by administration.'}
+                        </span>
+                      </div>
                     </div>
                   )}
 

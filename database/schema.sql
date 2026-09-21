@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS `admins` (
 -- 2. Table: ticket_counter
 -- Guarantees atomic, strictly non-colliding sequential ticket IDs
 -- (e.g., FM26-001, FM26-002, ...)
+-- Increments ONLY when a ticket is confirmed and generated.
 -- ----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `ticket_counter` (
   `id` INT PRIMARY KEY,
@@ -41,18 +42,20 @@ ON DUPLICATE KEY UPDATE `id` = `id`;
 -- ----------------------------------------------------------
 -- 3. Table: attendees
 -- Master record of all student & guest registrations
+-- ticket_id and qr_token remain NULL until payment is verified PAID.
 -- ----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `attendees` (
   `id` INT AUTO_INCREMENT PRIMARY KEY,
-  `ticket_id` VARCHAR(50) NOT NULL UNIQUE,
+  `ticket_id` VARCHAR(50) NULL UNIQUE,
   `full_name` VARCHAR(255) NOT NULL,
   `phone` VARCHAR(50) NOT NULL,
   `email` VARCHAR(255) NOT NULL,
   `college` VARCHAR(255) NOT NULL,
   `category` ENUM('FRESHER', 'SENIOR') NOT NULL DEFAULT 'FRESHER',
-  `payment_status` ENUM('PENDING', 'PAID', 'FAILED') NOT NULL DEFAULT 'PENDING',
+  `payment_status` ENUM('PENDING', 'PROCESSING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+  `entry_pass_status` ENUM('NOT_CREATED', 'ACTIVE', 'CHECKED_IN', 'REVOKED') NOT NULL DEFAULT 'NOT_CREATED',
   `registration_status` ENUM('REGISTERED', 'CANCELLED') NOT NULL DEFAULT 'REGISTERED',
-  `qr_token` VARCHAR(255) NOT NULL UNIQUE,
+  `qr_token` VARCHAR(255) NULL UNIQUE,
   `access_token` VARCHAR(255) NOT NULL UNIQUE,
   `check_in_status` ENUM('NOT_CHECKED_IN', 'CHECKED_IN') NOT NULL DEFAULT 'NOT_CHECKED_IN',
   `google_response_id` VARCHAR(255) NULL UNIQUE,
@@ -69,13 +72,42 @@ CREATE TABLE IF NOT EXISTS `attendees` (
   INDEX `idx_attendees_phone` (`phone`),
   INDEX `idx_attendees_email` (`email`),
   INDEX `idx_attendees_payment_status` (`payment_status`),
+  INDEX `idx_attendees_entry_pass_status` (`entry_pass_status`),
   INDEX `idx_attendees_check_in_status` (`check_in_status`),
   INDEX `idx_attendees_category` (`category`),
   INDEX `idx_attendees_google_response` (`google_response_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------
--- 4. Table: checkins
+-- 4. Table: payment_transactions
+-- Audit log of all payment attempts, webhooks, and gateway orders
+-- ----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `payment_transactions` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `registration_id` INT NOT NULL,
+  `gateway_provider` VARCHAR(50) NOT NULL DEFAULT 'razorpay',
+  `gateway_order_id` VARCHAR(100) NOT NULL,
+  `gateway_payment_id` VARCHAR(100) NULL,
+  `gateway_signature` VARCHAR(255) NULL,
+  `amount` DECIMAL(10, 2) NOT NULL DEFAULT 350.00,
+  `currency` VARCHAR(10) NOT NULL DEFAULT 'INR',
+  `payment_method` VARCHAR(50) NULL,
+  `status` ENUM('PENDING', 'PROCESSING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+  `gateway_event_id` VARCHAR(100) NULL UNIQUE,
+  `paid_at` DATETIME NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_tx_reg_id` (`registration_id`),
+  INDEX `idx_tx_order_id` (`gateway_order_id`),
+  INDEX `idx_tx_payment_id` (`gateway_payment_id`),
+  INDEX `idx_tx_status` (`status`),
+  CONSTRAINT `fk_transactions_attendee`
+    FOREIGN KEY (`registration_id`) REFERENCES `attendees` (`id`)
+    ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------
+-- 5. Table: checkins
 -- Audit trail of gate admittance actions
 -- ----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `checkins` (
@@ -92,9 +124,25 @@ CREATE TABLE IF NOT EXISTS `checkins` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------------------------------------
+-- 6. Table: audit_logs
+-- Immutable audit log of all admin operations and lifecycle events
+-- ----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `audit_logs` (
+  `id` INT AUTO_INCREMENT PRIMARY KEY,
+  `admin_id` INT NULL,
+  `attendee_id` INT NULL,
+  `action` VARCHAR(100) NOT NULL,
+  `details` TEXT NULL,
+  `ip_address` VARCHAR(50) NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX `idx_audit_action` (`action`),
+  INDEX `idx_audit_attendee` (`attendee_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------------------------------------
 -- Default Admin Seed
 -- Email: admin@msap.org
--- Password: ChangeMe@MSAP2026 (bcrypt hash: $2a$10$w66hUqj4V42a63i3F2p1b.Bf3u5M4wF6R9T1bO1dI2y3s4e5a6b7c)
+-- Password: ChangeMe@MSAP2026
 -- ----------------------------------------------------------
 INSERT INTO `admins` (`email`, `password_hash`, `role`)
 VALUES (

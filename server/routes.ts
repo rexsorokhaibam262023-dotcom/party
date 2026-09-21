@@ -4,7 +4,10 @@ import {
   createAttendee,
   getAttendeeByAccessToken,
   lookupAttendee,
-  confirmPayment,
+  lookupAttendeeSecure,
+  confirmPaymentManualOverride,
+  refundPaymentAndRevokePass,
+  getPaymentTransactionByOrderId,
   verifyQrToken,
   performCheckIn,
   getDashboardStats,
@@ -12,14 +15,18 @@ import {
   getAttendeeById,
   findAdminByEmail,
   isUsingMySQL,
+  createPaymentTransaction,
+  markPaymentSuccessfulAndGeneratePass,
+  markPaymentFailed,
 } from './db.js';
 import { comparePassword, generateAdminToken, requireAdminAuth, AuthenticatedRequest } from './auth.js';
 import { sendTicketConfirmationEmail } from './email.js';
+import { paymentService } from './payment.js';
 
 const router = express.Router();
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || 'msap_google_sheets_secret_token_2026';
 
-// Simple in-memory rate limiter for sensitive routes
+// In-memory rate limiter for sensitive routes
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();
@@ -44,12 +51,15 @@ router.get('/health', async (req: Request, res: Response) => {
     service: 'MSAP 53rd Freshers Meet 2026 API',
     event: "MSAP 53rd Freshers' Meet 2026",
     database: isUsingMySQL() ? 'MySQL (Live Connection)' : 'Relational Storage Engine',
+    paymentProvider: paymentService.getProviderName(),
+    paymentEnvironment: paymentService.isLiveMode() ? 'LIVE' : 'TEST / SANDBOX',
+    ticketPrice: paymentService.getEventTicketPrice(),
     timestamp: new Date().toISOString(),
   });
 });
 
 // ----------------------------------------------------
-// 2. Public Registration Intake (Direct / Simulator)
+// 2. Public Registration Intake
 // ----------------------------------------------------
 router.post('/registrations', async (req: Request, res: Response) => {
   try {
@@ -69,17 +79,35 @@ router.post('/registrations', async (req: Request, res: Response) => {
       paymentUtr: paymentUtr ? String(paymentUtr).trim() : undefined,
     });
 
+    // Create payment gateway order strictly with server-enforced ticket price
+    const order = await paymentService.createPaymentOrder({
+      registrationId: attendee.id,
+      customerName: attendee.full_name,
+      customerEmail: attendee.email,
+      customerPhone: attendee.phone,
+    });
+
+    await createPaymentTransaction({
+      registrationId: attendee.id,
+      gatewayProvider: order.provider,
+      gatewayOrderId: order.orderId,
+      amount: order.amount,
+      currency: order.currency,
+    });
+
     res.status(201).json({
       success: true,
-      message: 'Registration created successfully. Payment verification pending.',
+      message: 'Registration created successfully. Please complete payment to receive your entry pass.',
       attendee: {
         id: attendee.id,
-        ticket_id: attendee.ticket_id,
+        ticket_id: attendee.ticket_id, // NULL until paid
         full_name: attendee.full_name,
         category: attendee.category,
         payment_status: attendee.payment_status,
+        entry_pass_status: attendee.entry_pass_status,
         access_token: attendee.access_token,
       },
+      paymentOrder: order,
     });
   } catch (err: unknown) {
     console.error('Error creating registration:', err);
@@ -88,7 +116,283 @@ router.post('/registrations', async (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 3. Google Apps Script Webhook
+// 3. Initiate / Create Payment Order for Existing Registration
+// ----------------------------------------------------
+router.post('/payments/create-order', async (req: Request, res: Response) => {
+  try {
+    const { accessToken, registrationId } = req.body;
+    let attendee = null;
+
+    if (accessToken) {
+      attendee = await getAttendeeByAccessToken(String(accessToken));
+    } else if (registrationId) {
+      attendee = await getAttendeeById(Number(registrationId));
+    }
+
+    if (!attendee) {
+      return res.status(404).json({ error: 'Attendee registration record not found.' });
+    }
+
+    if (attendee.payment_status === 'PAID') {
+      return res.json({
+        success: true,
+        alreadyPaid: true,
+        message: 'Payment already completed and verified.',
+        ticketId: attendee.ticket_id,
+        accessToken: attendee.access_token,
+      });
+    }
+
+    const order = await paymentService.createPaymentOrder({
+      registrationId: attendee.id,
+      customerName: attendee.full_name,
+      customerEmail: attendee.email,
+      customerPhone: attendee.phone,
+    });
+
+    await createPaymentTransaction({
+      registrationId: attendee.id,
+      gatewayProvider: order.provider,
+      gatewayOrderId: order.orderId,
+      amount: order.amount,
+      currency: order.currency,
+    });
+
+    res.json({
+      success: true,
+      order,
+    });
+  } catch (err) {
+    console.error('Create payment order error:', err);
+    res.status(500).json({ error: 'Failed to create payment order.' });
+  }
+});
+
+// ----------------------------------------------------
+// 4. Primary Payment Gateway Webhook Receiver
+// Requirement 1, 5, 6, 7, 21: Production Webhook Endpoint
+// ----------------------------------------------------
+const handlePaymentWebhook = async (req: Request, res: Response) => {
+  try {
+    const signature =
+      (req.headers['x-razorpay-signature'] as string) ||
+      (req.headers['x-webhook-signature'] as string) ||
+      (req.headers['x-cf-signature'] as string);
+
+    // Cryptographic signature check on raw webhook body
+    const rawBody = (req as any).rawBody || JSON.stringify(req.body);
+    const hasSecret = Boolean(process.env.PAYMENT_WEBHOOK_SECRET);
+
+    if (hasSecret) {
+      const isValid = paymentService.verifyWebhookSignature(rawBody, signature);
+      if (!isValid) {
+        console.warn('[WEBHOOK SECURITY REJECT] Webhook signature failed verification.');
+        return res.status(400).json({ error: 'Invalid webhook signature.' });
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      console.error('[CRITICAL] PAYMENT_WEBHOOK_SECRET is not configured in production environment.');
+      return res.status(500).json({ error: 'Webhook secret not configured on server.' });
+    }
+
+    const event = paymentService.parseWebhookEvent(req.body);
+    console.log(`[WEBHOOK EVENT] Status: ${event.status}, Order: ${event.orderId}, PaymentId: ${event.paymentId}, EventId: ${event.eventId}`);
+
+    if (!event.orderId) {
+      return res.status(400).json({ error: 'Missing order_id in webhook payload.' });
+    }
+
+    // Verify transaction exists in database and extract registration
+    const existingTx = await getPaymentTransactionByOrderId(event.orderId);
+    let registrationId: number;
+
+    if (existingTx) {
+      registrationId = existingTx.registration_id;
+    } else {
+      // Fallback parse format: order_rzp_<regId>_<timestamp>
+      const orderParts = event.orderId.split('_');
+      registrationId = orderParts.length >= 3 ? parseInt(orderParts[2], 10) : NaN;
+    }
+
+    if (isNaN(registrationId)) {
+      return res.status(400).json({ error: 'Unrecognized order reference in webhook payload.' });
+    }
+
+    // Requirement 6: Verify amount received matches event ticket price
+    const expectedPrice = paymentService.getEventTicketPrice();
+    if (event.amount !== undefined && event.amount < expectedPrice) {
+      console.error(`[PAYMENT SECURITY FRAUD] Order ${event.orderId} received ₹${event.amount}, required ₹${expectedPrice}. Pass creation rejected.`);
+      return res.status(400).json({ error: 'Payment amount does not match ticket price.' });
+    }
+
+    if (event.status === 'PAID') {
+      // Atomic MySQL transaction with FOR UPDATE row locking & idempotency
+      const result = await markPaymentSuccessfulAndGeneratePass({
+        registrationId,
+        gatewayOrderId: event.orderId,
+        gatewayPaymentId: event.paymentId,
+        paymentMethod: event.paymentMethod,
+        confirmedBy: `GATEWAY_WEBHOOK_${event.paymentMethod?.toUpperCase() || 'UPI'}`,
+        eventId: event.eventId,
+      });
+
+      console.log(`[PASS ISSUED] Pass ${result.attendee.ticket_id} confirmed for ${result.attendee.full_name}`);
+
+      // Dispatch ticket email confirmation
+      if (result.isNewPass && result.attendee.email) {
+        const passUrl = `${req.protocol}://${req.get('host')}/#ticket_${result.attendee.access_token}`;
+        sendTicketConfirmationEmail({
+          toEmail: result.attendee.email,
+          recipientName: result.attendee.full_name,
+          ticketId: result.attendee.ticket_id || 'FM26-XXX',
+          passUrl,
+          category: result.attendee.category,
+        }).catch((e) => console.error('Email dispatch error:', e));
+      }
+
+      return res.json({ success: true, processed: true, ticketId: result.attendee.ticket_id });
+    } else if (event.status === 'FAILED' || event.status === 'EXPIRED') {
+      await markPaymentFailed({
+        registrationId,
+        gatewayOrderId: event.orderId,
+        status: event.status,
+      });
+      return res.json({ success: true, processed: true, status: event.status });
+    }
+
+    res.json({ success: true, acknowledged: true });
+  } catch (err) {
+    console.error('Payment webhook error:', err);
+    res.status(500).json({ error: 'Internal webhook error.' });
+  }
+};
+
+// Mount both standard webhook endpoint and alias
+router.post('/payment/webhook', handlePaymentWebhook);
+router.post('/webhook/payment-gateway', handlePaymentWebhook);
+
+// ----------------------------------------------------
+// 5. Server-Side Checkout Payment Verification
+// Requirement 1, 6, 7: Client Checkout Verification
+// ----------------------------------------------------
+router.post('/payments/verify-checkout', async (req: Request, res: Response) => {
+  try {
+    const { accessToken, orderId, paymentId, signature } = req.body;
+
+    if (!accessToken || !orderId || !paymentId || !signature) {
+      return res.status(400).json({
+        error: 'Missing required parameters: accessToken, orderId, paymentId, and signature are mandatory.',
+      });
+    }
+
+    const attendee = await getAttendeeByAccessToken(String(accessToken));
+    if (!attendee) {
+      return res.status(404).json({ error: 'Registration record not found.' });
+    }
+
+    if (attendee.payment_status === 'PAID') {
+      return res.json({
+        success: true,
+        message: 'Payment already verified.',
+        ticketId: attendee.ticket_id,
+        attendee,
+      });
+    }
+
+    // Requirement 7: Verify gateway_order_id belongs to this registration
+    const existingTx = await getPaymentTransactionByOrderId(orderId);
+    if (existingTx && existingTx.registration_id !== attendee.id) {
+      console.warn(`[SECURITY FRAUD] Order ${orderId} does not belong to attendee #${attendee.id}`);
+      return res.status(403).json({ error: 'Order ID mismatch: this order belongs to another registration.' });
+    }
+
+    // Verify HMAC signature & fetch API verification from payment gateway
+    const verification = await paymentService.verifyCheckoutPayment({
+      orderId: String(orderId),
+      paymentId: String(paymentId),
+      signature: String(signature),
+      registrationId: attendee.id,
+    });
+
+    if (!verification.verified) {
+      return res.status(400).json({ error: verification.error || 'Payment gateway verification failed.' });
+    }
+
+    // Payment successfully verified by cryptographic signature and/or gateway API
+    const result = await markPaymentSuccessfulAndGeneratePass({
+      registrationId: attendee.id,
+      gatewayOrderId: orderId,
+      gatewayPaymentId: paymentId,
+      gatewaySignature: signature,
+      paymentMethod: 'razorpay_checkout',
+      confirmedBy: `GATEWAY_CHECKOUT_VERIFIED (Payment: ${paymentId})`,
+      eventId: `checkout_${paymentId}`,
+    });
+
+    res.json({
+      success: true,
+      message: 'Payment verified! Your official entry pass and QR code have been generated.',
+      ticketId: result.attendee.ticket_id,
+      attendee: result.attendee,
+    });
+  } catch (err) {
+    console.error('Checkout payment verification error:', err);
+    res.status(500).json({ error: 'Failed to verify payment with gateway.' });
+  }
+});
+
+// ----------------------------------------------------
+// 6. Payment Status Polling (Requirement 17)
+// Frontend checks this endpoint while gateway processes webhook
+// ----------------------------------------------------
+router.get('/payments/status/:registrationId', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(req.params.registrationId, 10);
+    if (isNaN(id)) {
+      return res.status(400).json({ error: 'Invalid registration ID.' });
+    }
+
+    const attendee = await getAttendeeById(id);
+    if (!attendee) {
+      return res.status(404).json({ error: 'Attendee record not found.' });
+    }
+
+    res.json({
+      success: true,
+      registrationId: attendee.id,
+      paymentStatus: attendee.payment_status,
+      entryPassStatus: attendee.entry_pass_status,
+      isPaid: attendee.payment_status === 'PAID',
+      ticketId: attendee.ticket_id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve payment status.' });
+  }
+});
+
+router.get('/payments/status-by-token/:accessToken', async (req: Request, res: Response) => {
+  try {
+    const { accessToken } = req.params;
+    const attendee = await getAttendeeByAccessToken(String(accessToken));
+
+    if (!attendee) {
+      return res.status(404).json({ error: 'Registration record not found.' });
+    }
+
+    res.json({
+      success: true,
+      registrationId: attendee.id,
+      paymentStatus: attendee.payment_status,
+      entryPassStatus: attendee.entry_pass_status,
+      isPaid: attendee.payment_status === 'PAID',
+      ticketId: attendee.ticket_id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve payment status.' });
+  }
+});
+
+// ----------------------------------------------------
+// 7. Google Apps Script Webhook
 // ----------------------------------------------------
 router.post('/webhook/google-form', async (req: Request, res: Response) => {
   try {
@@ -115,12 +419,13 @@ router.post('/webhook/google-form', async (req: Request, res: Response) => {
       googleResponseId: googleResponseId ? String(googleResponseId).trim() : undefined,
     });
 
-    console.log(`[WEBHOOK] Synchronized Google Form response. Assigned Ticket ID: ${attendee.ticket_id}`);
+    console.log(`[WEBHOOK] Synchronized Google Form response. Attendee #${attendee.id}`);
 
     res.status(200).json({
       success: true,
       ticketId: attendee.ticket_id,
       paymentStatus: attendee.payment_status,
+      entryPassStatus: attendee.entry_pass_status,
       accessToken: attendee.access_token,
       attendeeId: attendee.id,
     });
@@ -131,31 +436,41 @@ router.post('/webhook/google-form', async (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 4. Secure Pass Lookup (Public)
+// 8. Secure Pass Lookup (Requirement 13: 2-Factor Lookup)
 // ----------------------------------------------------
 router.get('/tickets/lookup', async (req: Request, res: Response) => {
   try {
     const query = req.query.q as string;
+    const phone = req.query.phone as string;
+    const key = req.query.key as string; // email or rollId
+
     const ip = req.ip || 'global';
     if (!checkRateLimit(`lookup_${ip}`, 30, 60000)) {
       return res.status(429).json({ error: 'Too many search requests. Please wait a moment.' });
     }
 
-    if (!query || query.trim().length < 3) {
-      return res.status(400).json({ error: 'Search query must be at least 3 characters.' });
+    let attendee = null;
+
+    // Secure 2-factor lookup if phone and key provided
+    if (phone && key) {
+      attendee = await lookupAttendeeSecure(phone, key);
+    } else if (query && query.trim().length >= 3) {
+      attendee = await lookupAttendee(query);
+    } else {
+      return res.status(400).json({ error: 'Please provide phone number and email/roll ID.' });
     }
 
-    const attendee = await lookupAttendee(query);
     if (!attendee) {
-      return res.status(404).json({ error: 'No matching pass found for this search.' });
+      return res.status(404).json({ error: 'No matching registration found.' });
     }
 
-    // Return the safe access token so the frontend can load their pass securely
     res.json({
       success: true,
       accessToken: attendee.access_token,
       ticketId: attendee.ticket_id,
       fullName: attendee.full_name,
+      paymentStatus: attendee.payment_status,
+      entryPassStatus: attendee.entry_pass_status,
     });
   } catch (err) {
     console.error('Lookup error:', err);
@@ -164,7 +479,8 @@ router.get('/tickets/lookup', async (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 5. Secure Digital Pass Access (Public via Token)
+// 9. Secure Digital Pass Access (Public via Token)
+// Requirement 9: QR Token contains only secure cryptographic token
 // ----------------------------------------------------
 router.get('/tickets/:token', async (req: Request, res: Response) => {
   try {
@@ -172,28 +488,27 @@ router.get('/tickets/:token', async (req: Request, res: Response) => {
     const attendee = await getAttendeeByAccessToken(token);
 
     if (!attendee) {
-      return res.status(404).json({ error: 'Digital entry pass not found or invalid token.' });
+      return res.status(404).json({ error: 'Registration record not found or invalid token.' });
     }
 
-    // Generate high-contrast SVG QR Code on server
-    // For PAID tickets, QR payload is the secure cryptographically random qr_token
-    // For PENDING tickets, QR is not active yet
+    // Only generate scannable QR code if PAID and pass is ACTIVE
     let qrSvg = '';
-    const isPaid = attendee.payment_status === 'PAID';
-    const qrPayload = isPaid ? attendee.qr_token : 'PAYMENT_PENDING_VOUCHER_INACTIVE';
+    const isPaid = attendee.payment_status === 'PAID' && attendee.qr_token;
 
-    try {
-      qrSvg = await QRCode.toString(qrPayload, {
-        type: 'svg',
-        margin: 2,
-        color: {
-          dark: '#0B0F19',
-          light: '#FFFFFF',
-        },
-        errorCorrectionLevel: 'H',
-      });
-    } catch {
-      // Fallback
+    if (isPaid && attendee.qr_token) {
+      try {
+        qrSvg = await QRCode.toString(attendee.qr_token, {
+          type: 'svg',
+          margin: 2,
+          color: {
+            dark: '#0B0F19',
+            light: '#FFFFFF',
+          },
+          errorCorrectionLevel: 'H',
+        });
+      } catch (err) {
+        console.error('QR code generation error:', err);
+      }
     }
 
     res.json({
@@ -204,6 +519,7 @@ router.get('/tickets/:token', async (req: Request, res: Response) => {
         category: attendee.category,
         college: attendee.college,
         paymentStatus: attendee.payment_status,
+        entryPassStatus: attendee.entry_pass_status,
         checkInStatus: attendee.check_in_status,
         checkInTime: attendee.check_in_time,
         paymentUtr: attendee.payment_utr,
@@ -214,7 +530,7 @@ router.get('/tickets/:token', async (req: Request, res: Response) => {
         venue: 'Pune (MSAP Campus Main Auditorium)',
         eventName: "53rd Freshers' Meet 2026",
         organization: "Manipur Students' Association Pune (MSAP)",
-        amount: '₹350',
+        amount: `₹${paymentService.getEventTicketPrice()}`,
       },
     });
   } catch (err) {
@@ -224,7 +540,7 @@ router.get('/tickets/:token', async (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 6. Admin Authentication (POST /api/admin/login)
+// 10. Admin Authentication (POST /api/admin/login)
 // ----------------------------------------------------
 router.post('/admin/login', async (req: Request, res: Response) => {
   try {
@@ -270,7 +586,7 @@ router.post('/admin/login', async (req: Request, res: Response) => {
 });
 
 // ----------------------------------------------------
-// 7. Authenticated Admin Endpoints (Require Admin JWT)
+// 11. Authenticated Admin Endpoints (Require Admin JWT)
 // ----------------------------------------------------
 
 // Verify Admin Session
@@ -329,21 +645,37 @@ router.get('/admin/attendees/:id', requireAdminAuth, async (req: AuthenticatedRe
   }
 });
 
-// Confirm Payment
+// Requirement 10: Emergency Admin Manual Payment Override
+// Requires authenticated admin, admin ID, timestamp, and mandatory audit reason.
 router.post('/admin/attendees/:id/confirm-payment', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const adminEmail = req.admin?.email || 'admin@msap.org';
+    const { reason } = req.body;
 
-    const attendee = await confirmPayment(id, adminEmail);
+    if (!reason || String(reason).trim().length < 5) {
+      return res.status(400).json({
+        error: 'A mandatory audit reason (minimum 5 characters) is required for emergency manual payment override.',
+      });
+    }
+
+    const adminEmail = req.admin?.email || 'admin@msap.org';
+    const adminId = req.admin?.id || 1;
+
+    const attendee = await confirmPaymentManualOverride({
+      attendeeId: id,
+      adminId,
+      adminEmail,
+      reason: String(reason).trim(),
+    });
+
     if (!attendee) {
       return res.status(404).json({ error: 'Attendee record not found.' });
     }
 
-    console.log(`[PAYMENT] Attendee ${attendee.ticket_id} confirmed by ${adminEmail}`);
+    console.log(`[MANUAL OVERRIDE] Attendee ${attendee.ticket_id} manually approved by Admin ID ${adminId} (${adminEmail}). Reason: ${reason}`);
 
     // Optional email dispatch hook
-    if (attendee.email) {
+    if (attendee.email && attendee.ticket_id) {
       const passUrl = `${req.protocol}://${req.get('host')}/#ticket_${attendee.access_token}`;
       sendTicketConfirmationEmail({
         toEmail: attendee.email,
@@ -356,12 +688,44 @@ router.post('/admin/attendees/:id/confirm-payment', requireAdminAuth, async (req
 
     res.json({
       success: true,
-      message: `Payment confirmed for ${attendee.full_name} (${attendee.ticket_id}). QR entry pass is now ACTIVE.`,
+      message: `Emergency manual payment override confirmed for ${attendee.full_name} (${attendee.ticket_id}). Pass is now ACTIVE.`,
+      badge: 'MANUAL_ADMIN_OVERRIDE',
       attendee,
     });
-  } catch (err) {
+  } catch (err: unknown) {
     console.error('Payment confirmation error:', err);
-    res.status(500).json({ error: 'Failed to confirm payment.' });
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to confirm payment.' });
+  }
+});
+
+// Requirement 12: Admin Refund & Pass Revocation
+router.post('/admin/attendees/:id/refund', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { reason } = req.body;
+
+    if (!reason || String(reason).trim().length < 5) {
+      return res.status(400).json({ error: 'A valid reason for refund and ticket revocation is mandatory.' });
+    }
+
+    const adminEmail = req.admin?.email || 'admin@msap.org';
+    const adminId = req.admin?.id || 1;
+
+    const result = await refundPaymentAndRevokePass({
+      attendeeId: id,
+      adminId,
+      adminEmail,
+      reason: String(reason).trim(),
+    });
+
+    res.json({
+      success: true,
+      message: `Payment marked REFUNDED and Pass ${result.attendee.ticket_id} REVOKED. Scanner will deny entry.`,
+      attendee: result.attendee,
+    });
+  } catch (err: unknown) {
+    console.error('Refund error:', err);
+    res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to process refund.' });
   }
 });
 
@@ -386,7 +750,7 @@ router.post('/admin/verify-qr', requireAdminAuth, async (req: AuthenticatedReque
   }
 });
 
-// Confirm Check-In Admittance (Atomic Transaction)
+// Confirm Check-In Admittance (Atomic Transaction with Row Locking)
 router.post('/admin/check-in', requireAdminAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { attendee_id } = req.body;

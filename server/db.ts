@@ -2,7 +2,17 @@ import mysql from 'mysql2/promise';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { Attendee, AttendeeCategory, PaymentStatus, DashboardStats, CreateRegistrationDTO, VerifyQrResult, AdminUser } from './types.js';
+import {
+  Attendee,
+  AttendeeCategory,
+  PaymentStatus,
+  EntryPassStatus,
+  DashboardStats,
+  CreateRegistrationDTO,
+  VerifyQrResult,
+  AdminUser,
+  PaymentTransaction,
+} from './types.js';
 import { hashPassword } from './auth.js';
 
 const DB_HOST = process.env.DB_HOST || '127.0.0.1';
@@ -10,6 +20,9 @@ const DB_PORT = parseInt(process.env.DB_PORT || '3306', 10);
 const DB_NAME = process.env.DB_NAME || 'msap_freshers_2026';
 const DB_USER = process.env.DB_USER || 'msap_user';
 const DB_PASSWORD = process.env.DB_PASSWORD || '';
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const REQUIRE_MYSQL = process.env.REQUIRE_MYSQL === 'true' || IS_PRODUCTION;
 
 let mysqlPool: mysql.Pool | null = null;
 let useLocalFallback = false;
@@ -19,12 +32,22 @@ interface LocalStore {
   ticket_counter: number;
   admins: AdminUser[];
   attendees: Attendee[];
+  payment_transactions: PaymentTransaction[];
   checkins: Array<{
     id: number;
     attendee_id: number;
     ticket_id: string;
     checked_in_by: string;
     check_in_time: string;
+  }>;
+  audit_logs: Array<{
+    id: number;
+    admin_id?: number | null;
+    attendee_id?: number | null;
+    action: string;
+    details?: string | null;
+    ip_address?: string | null;
+    created_at: string;
   }>;
 }
 
@@ -34,7 +57,10 @@ function loadLocalStore(): LocalStore {
   try {
     if (fs.existsSync(LOCAL_STORE_PATH)) {
       const data = fs.readFileSync(LOCAL_STORE_PATH, 'utf-8');
-      return JSON.parse(data);
+      const parsed = JSON.parse(data);
+      if (!parsed.payment_transactions) parsed.payment_transactions = [];
+      if (!parsed.audit_logs) parsed.audit_logs = [];
+      return parsed;
     }
   } catch (err) {
     console.error('Error reading local_store.json, creating new one:', err);
@@ -53,6 +79,7 @@ function loadLocalStore(): LocalStore {
         college: 'B.Arch - Architecture',
         category: 'FRESHER',
         payment_status: 'PAID',
+        entry_pass_status: 'ACTIVE',
         registration_status: 'REGISTERED',
         qr_token: 'msap_qr_token_7f9c8d1e2a3b4c5d6e7f8a9b0c1d2e3f',
         access_token: 'acc_token_aarav_sharma_001',
@@ -67,7 +94,25 @@ function loadLocalStore(): LocalStore {
         updated_at: new Date().toISOString(),
       },
     ],
+    payment_transactions: [
+      {
+        id: 1,
+        registration_id: 1,
+        gateway_provider: 'razorpay',
+        gateway_order_id: 'order_rzp_1_initial',
+        gateway_payment_id: 'pay_rzp_1_initial',
+        gateway_signature: 'sig_verified_initial',
+        amount: 350.0,
+        currency: 'INR',
+        payment_method: 'upi',
+        status: 'PAID',
+        paid_at: '2026-09-20T10:00:00Z',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+    ],
     checkins: [],
+    audit_logs: [],
   };
 
   saveLocalStore(initialStore);
@@ -147,15 +192,16 @@ export async function initDatabase(): Promise<void> {
     await mysqlPool.query(`
       CREATE TABLE IF NOT EXISTS \`attendees\` (
         \`id\` INT AUTO_INCREMENT PRIMARY KEY,
-        \`ticket_id\` VARCHAR(50) NOT NULL UNIQUE,
+        \`ticket_id\` VARCHAR(50) NULL UNIQUE,
         \`full_name\` VARCHAR(255) NOT NULL,
         \`phone\` VARCHAR(50) NOT NULL,
         \`email\` VARCHAR(255) NOT NULL,
         \`college\` VARCHAR(255) NOT NULL,
         \`category\` ENUM('FRESHER', 'SENIOR') NOT NULL DEFAULT 'FRESHER',
-        \`payment_status\` ENUM('PENDING', 'PAID', 'FAILED') NOT NULL DEFAULT 'PENDING',
+        \`payment_status\` ENUM('PENDING', 'PROCESSING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+        \`entry_pass_status\` ENUM('NOT_CREATED', 'ACTIVE', 'CHECKED_IN', 'REVOKED') NOT NULL DEFAULT 'NOT_CREATED',
         \`registration_status\` ENUM('REGISTERED', 'CANCELLED') NOT NULL DEFAULT 'REGISTERED',
-        \`qr_token\` VARCHAR(255) NOT NULL UNIQUE,
+        \`qr_token\` VARCHAR(255) NULL UNIQUE,
         \`access_token\` VARCHAR(255) NOT NULL UNIQUE,
         \`check_in_status\` ENUM('NOT_CHECKED_IN', 'CHECKED_IN') NOT NULL DEFAULT 'NOT_CHECKED_IN',
         \`google_response_id\` VARCHAR(255) NULL UNIQUE,
@@ -172,7 +218,31 @@ export async function initDatabase(): Promise<void> {
         INDEX \`idx_attendees_phone\` (\`phone\`),
         INDEX \`idx_attendees_email\` (\`email\`),
         INDEX \`idx_attendees_payment_status\` (\`payment_status\`),
+        INDEX \`idx_attendees_entry_pass_status\` (\`entry_pass_status\`),
         INDEX \`idx_attendees_check_in_status\` (\`check_in_status\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
+    await mysqlPool.query(`
+      CREATE TABLE IF NOT EXISTS \`payment_transactions\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`registration_id\` INT NOT NULL,
+        \`gateway_provider\` VARCHAR(50) NOT NULL DEFAULT 'razorpay',
+        \`gateway_order_id\` VARCHAR(100) NOT NULL,
+        \`gateway_payment_id\` VARCHAR(100) NULL,
+        \`gateway_signature\` VARCHAR(255) NULL,
+        \`amount\` DECIMAL(10, 2) NOT NULL DEFAULT 350.00,
+        \`currency\` VARCHAR(10) NOT NULL DEFAULT 'INR',
+        \`payment_method\` VARCHAR(50) NULL,
+        \`status\` ENUM('PENDING', 'PROCESSING', 'PAID', 'FAILED', 'EXPIRED', 'REFUNDED') NOT NULL DEFAULT 'PENDING',
+        \`gateway_event_id\` VARCHAR(100) NULL UNIQUE,
+        \`paid_at\` DATETIME NULL,
+        \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        \`updated_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX \`idx_tx_reg_id\` (\`registration_id\`),
+        INDEX \`idx_tx_order_id\` (\`gateway_order_id\`),
+        INDEX \`idx_tx_payment_id\` (\`gateway_payment_id\`),
+        INDEX \`idx_tx_status\` (\`status\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
@@ -191,6 +261,20 @@ export async function initDatabase(): Promise<void> {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
 
+    await mysqlPool.query(`
+      CREATE TABLE IF NOT EXISTS \`audit_logs\` (
+        \`id\` INT AUTO_INCREMENT PRIMARY KEY,
+        \`admin_id\` INT NULL,
+        \`attendee_id\` INT NULL,
+        \`action\` VARCHAR(100) NOT NULL,
+        \`details\` TEXT NULL,
+        \`ip_address\` VARCHAR(50) NULL,
+        \`created_at\` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX \`idx_audit_action\` (\`action\`),
+        INDEX \`idx_audit_attendee\` (\`attendee_id\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+    `);
+
     // Ensure default admin exists
     const defaultEmail = process.env.ADMIN_DEFAULT_EMAIL || 'admin@msap.org';
     const [existingAdmins] = await mysqlPool.query<mysql.RowDataPacket[]>('SELECT id FROM admins WHERE email = ?', [defaultEmail]);
@@ -204,7 +288,13 @@ export async function initDatabase(): Promise<void> {
     console.log(`[DATABASE] Connected to live MySQL database '${DB_NAME}' successfully!`);
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    console.warn(`[DATABASE] MySQL connection not established (${errorMsg}). Switching to persistent relational storage mode.`);
+    if (REQUIRE_MYSQL) {
+      console.error(`[DATABASE CRITICAL ERROR] Failed to connect to MySQL database at ${DB_HOST}:${DB_PORT}/${DB_NAME}: ${errorMsg}`);
+      console.error('[DATABASE CRITICAL ERROR] In production mode (REQUIRE_MYSQL=true), automatic fallback to local JSON storage is strictly prohibited to prevent data loss or duplicate ticketing.');
+      throw new Error(`[FATAL] MySQL connection failure in production: ${errorMsg}. Local JSON fallback is disabled.`);
+    }
+
+    console.warn(`[DATABASE DEV WARNING] MySQL connection not established (${errorMsg}). Switching to persistent relational storage mode for local development.`);
     useLocalFallback = true;
     const store = loadLocalStore();
 
@@ -269,17 +359,17 @@ export async function generateNextTicketId(): Promise<string> {
 }
 
 /**
- * Creates a new attendee record with unique constraints
+ * Creates a new attendee registration record
+ * STRICT ENFORCEMENT: Ticket ID and QR Token remain NULL until payment status is PAID.
  */
 export async function createAttendee(dto: CreateRegistrationDTO): Promise<Attendee> {
-  const ticketId = await generateNextTicketId();
-  const qrToken = `msap_token_${crypto.randomBytes(32).toString('hex')}`;
   const accessToken = `acc_${crypto.randomBytes(24).toString('hex')}`;
   const paymentStatus: PaymentStatus = 'PENDING';
+  const entryPassStatus: EntryPassStatus = 'NOT_CREATED';
   const category: AttendeeCategory = dto.category === 'SENIOR' ? 'SENIOR' : 'FRESHER';
 
   if (isUsingMySQL() && mysqlPool) {
-    // Check duplicate Google Response ID
+    // Check duplicate Google Response ID if provided
     if (dto.googleResponseId) {
       const [existing] = await mysqlPool.query<mysql.RowDataPacket[]>(
         'SELECT * FROM attendees WHERE google_response_id = ?',
@@ -293,18 +383,17 @@ export async function createAttendee(dto: CreateRegistrationDTO): Promise<Attend
     const [result] = await mysqlPool.query<mysql.ResultSetHeader>(
       `INSERT INTO attendees (
         ticket_id, full_name, phone, email, college, category,
-        payment_status, registration_status, qr_token, access_token,
+        payment_status, entry_pass_status, registration_status, qr_token, access_token,
         check_in_status, google_response_id, student_roll_id, payment_utr
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, 'REGISTERED', ?, ?, 'NOT_CHECKED_IN', ?, ?, ?)`,
+      ) VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, 'REGISTERED', NULL, ?, 'NOT_CHECKED_IN', ?, ?, ?)`,
       [
-        ticketId,
         dto.fullName,
         dto.phone,
         dto.email,
         dto.college,
         category,
         paymentStatus,
-        qrToken,
+        entryPassStatus,
         accessToken,
         dto.googleResponseId || null,
         dto.rollId || null,
@@ -328,15 +417,16 @@ export async function createAttendee(dto: CreateRegistrationDTO): Promise<Attend
     const now = new Date().toISOString();
     const newAttendee: Attendee = {
       id: newId,
-      ticket_id: ticketId,
+      ticket_id: null, // Strictly NULL until verified PAID
       full_name: dto.fullName,
       phone: dto.phone,
       email: dto.email,
       college: dto.college,
       category,
       payment_status: paymentStatus,
+      entry_pass_status: entryPassStatus,
       registration_status: 'REGISTERED',
-      qr_token: qrToken,
+      qr_token: null, // Strictly NULL until verified PAID
       access_token: accessToken,
       check_in_status: 'NOT_CHECKED_IN',
       google_response_id: dto.googleResponseId || null,
@@ -356,6 +446,334 @@ export async function createAttendee(dto: CreateRegistrationDTO): Promise<Attend
 }
 
 /**
+ * Creates an order record in payment_transactions table
+ */
+export async function createPaymentTransaction(params: {
+  registrationId: number;
+  gatewayProvider: string;
+  gatewayOrderId: string;
+  amount: number;
+  currency?: string;
+}): Promise<PaymentTransaction> {
+  const { registrationId, gatewayProvider, gatewayOrderId, amount, currency = 'INR' } = params;
+
+  if (isUsingMySQL() && mysqlPool) {
+    const [result] = await mysqlPool.query<mysql.ResultSetHeader>(
+      `INSERT INTO payment_transactions (
+        registration_id, gateway_provider, gateway_order_id, amount, currency, status
+      ) VALUES (?, ?, ?, ?, ?, 'PENDING')`,
+      [registrationId, gatewayProvider, gatewayOrderId, amount, currency]
+    );
+
+    const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+      'SELECT * FROM payment_transactions WHERE id = ?',
+      [result.insertId]
+    );
+    return rows[0] as PaymentTransaction;
+  } else {
+    const store = loadLocalStore();
+    const newId = store.payment_transactions.length > 0
+      ? Math.max(...store.payment_transactions.map((t) => t.id)) + 1
+      : 1;
+    const now = new Date().toISOString();
+    const tx: PaymentTransaction = {
+      id: newId,
+      registration_id: registrationId,
+      gateway_provider: gatewayProvider,
+      gateway_order_id: gatewayOrderId,
+      amount,
+      currency,
+      status: 'PENDING',
+      created_at: now,
+      updated_at: now,
+    };
+    store.payment_transactions.push(tx);
+    saveLocalStore(store);
+    return tx;
+  }
+}
+
+/**
+ * Atomically marks payment as PAID, increments ticket_counter, and creates Entry Pass + QR code
+ */
+export async function markPaymentSuccessfulAndGeneratePass(params: {
+  registrationId: number;
+  gatewayOrderId?: string;
+  gatewayPaymentId?: string;
+  gatewaySignature?: string;
+  paymentMethod?: string;
+  confirmedBy?: string;
+  eventId?: string;
+  isManualOverride?: boolean;
+  overrideReason?: string;
+  adminId?: number;
+}): Promise<{ attendee: Attendee; isNewPass: boolean }> {
+  const {
+    registrationId,
+    gatewayOrderId,
+    gatewayPaymentId,
+    gatewaySignature,
+    paymentMethod = 'upi',
+    confirmedBy = 'SYSTEM_GATEWAY_WEBHOOK',
+    eventId,
+    isManualOverride = false,
+    overrideReason,
+    adminId,
+  } = params;
+
+  if (isUsingMySQL() && mysqlPool) {
+    const conn = await mysqlPool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      // Check idempotency if webhook eventId provided
+      if (eventId) {
+        const [existingEvents] = await conn.query<mysql.RowDataPacket[]>(
+          'SELECT id FROM payment_transactions WHERE gateway_event_id = ? AND status = "PAID"',
+          [eventId]
+        );
+        if (existingEvents.length > 0) {
+          const [att] = await conn.query<mysql.RowDataPacket[]>(
+            'SELECT * FROM attendees WHERE id = ?',
+            [registrationId]
+          );
+          await conn.rollback();
+          return { attendee: att[0] as Attendee, isNewPass: false };
+        }
+      }
+
+      // Lock attendee row FOR UPDATE
+      const [rows] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT * FROM attendees WHERE id = ? FOR UPDATE',
+        [registrationId]
+      );
+
+      if (rows.length === 0) {
+        await conn.rollback();
+        throw new Error(`Attendee #${registrationId} not found.`);
+      }
+
+      const attendee = rows[0] as Attendee;
+
+      // If already PAID and already has ticket_id, keep existing pass (idempotent)
+      if (attendee.payment_status === 'PAID' && attendee.ticket_id && attendee.qr_token) {
+        await conn.commit();
+        return { attendee, isNewPass: false };
+      }
+
+      // Generate atomic ticket ID
+      const [counterRows] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT current_number FROM ticket_counter WHERE id = 1 FOR UPDATE'
+      );
+      let currentNumber = 0;
+      if (counterRows.length > 0) {
+        currentNumber = counterRows[0].current_number;
+      } else {
+        await conn.query('INSERT INTO ticket_counter (id, current_number) VALUES (1, 0)');
+      }
+
+      const nextNumber = currentNumber + 1;
+      await conn.query('UPDATE ticket_counter SET current_number = ? WHERE id = 1', [nextNumber]);
+      const newTicketId = formatTicketId(nextNumber);
+      const newQrToken = `msap_token_${crypto.randomBytes(32).toString('hex')}`;
+
+      const confirmedByFormatted = isManualOverride
+        ? `MANUAL_OVERRIDE_BY_${confirmedBy}${overrideReason ? ` (Reason: ${overrideReason})` : ''}`
+        : confirmedBy;
+
+      // Update attendee record
+      await conn.query(
+        `UPDATE attendees 
+         SET ticket_id = ?,
+             qr_token = ?,
+             payment_status = 'PAID',
+             entry_pass_status = 'ACTIVE',
+             payment_confirmed_at = NOW(),
+             payment_confirmed_by = ?
+         WHERE id = ?`,
+        [newTicketId, newQrToken, confirmedByFormatted, registrationId]
+      );
+
+      // Update or create payment_transaction record
+      if (gatewayOrderId) {
+        await conn.query(
+          `UPDATE payment_transactions
+           SET status = 'PAID',
+               gateway_payment_id = ?,
+               gateway_signature = ?,
+               payment_method = ?,
+               gateway_event_id = ?,
+               paid_at = NOW()
+           WHERE gateway_order_id = ?`,
+          [gatewayPaymentId || null, gatewaySignature || null, paymentMethod, eventId || null, gatewayOrderId]
+        );
+      } else {
+        await conn.query(
+          `INSERT INTO payment_transactions (
+            registration_id, gateway_provider, gateway_order_id, gateway_payment_id,
+            gateway_signature, amount, currency, payment_method, status, gateway_event_id, paid_at
+          ) VALUES (?, ?, ?, ?, ?, 350.00, 'INR', ?, 'PAID', ?, NOW())`,
+          [
+            registrationId,
+            isManualOverride ? 'admin_manual_override' : 'payment_gateway',
+            `tx_${Date.now()}_${registrationId}`,
+            gatewayPaymentId || `pay_manual_${Date.now()}`,
+            gatewaySignature || null,
+            paymentMethod,
+            eventId || null,
+          ]
+        );
+      }
+
+      // Distinguish audit log: PAYMENT_CONFIRMED_BY_GATEWAY vs PAYMENT_MANUALLY_CONFIRMED
+      const auditAction = isManualOverride ? 'PAYMENT_MANUALLY_CONFIRMED' : 'PAYMENT_CONFIRMED_BY_GATEWAY';
+      const auditDetails = isManualOverride
+        ? `Emergency manual payment override confirmed by Admin ID ${adminId || 'N/A'} (${confirmedBy}). Reason: ${overrideReason || 'Administrative exception'}. Ticket ${newTicketId} issued.`
+        : `Payment verified via gateway. Order: ${gatewayOrderId || 'N/A'}, Payment: ${gatewayPaymentId || 'N/A'}. Ticket ${newTicketId} issued.`;
+
+      await conn.query(
+        `INSERT INTO audit_logs (admin_id, attendee_id, action, details)
+         VALUES (?, ?, ?, ?)`,
+        [adminId || null, registrationId, auditAction, auditDetails]
+      );
+
+      await conn.commit();
+
+      const [updatedRows] = await conn.query<mysql.RowDataPacket[]>(
+        'SELECT * FROM attendees WHERE id = ?',
+        [registrationId]
+      );
+      return { attendee: updatedRows[0] as Attendee, isNewPass: true };
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
+    }
+  } else {
+    // Local storage fallback
+    const store = loadLocalStore();
+    const attendee = store.attendees.find((a) => a.id === registrationId);
+    if (!attendee) {
+      throw new Error(`Attendee #${registrationId} not found.`);
+    }
+
+    if (attendee.payment_status === 'PAID' && attendee.ticket_id && attendee.qr_token) {
+      return { attendee, isNewPass: false };
+    }
+
+    store.ticket_counter = (store.ticket_counter || 0) + 1;
+    const newTicketId = formatTicketId(store.ticket_counter);
+    const newQrToken = `msap_token_${crypto.randomBytes(32).toString('hex')}`;
+    const now = new Date().toISOString();
+
+    const confirmedByFormatted = isManualOverride
+      ? `MANUAL_OVERRIDE_BY_${confirmedBy}${overrideReason ? ` (Reason: ${overrideReason})` : ''}`
+      : confirmedBy;
+
+    attendee.ticket_id = newTicketId;
+    attendee.qr_token = newQrToken;
+    attendee.payment_status = 'PAID';
+    attendee.entry_pass_status = 'ACTIVE';
+    attendee.payment_confirmed_at = now;
+    attendee.payment_confirmed_by = confirmedByFormatted;
+    attendee.updated_at = now;
+
+    // Record transaction
+    const tx = store.payment_transactions.find(
+      (t) => gatewayOrderId && t.gateway_order_id === gatewayOrderId
+    );
+    if (tx) {
+      tx.status = 'PAID';
+      tx.gateway_payment_id = gatewayPaymentId || `pay_${Date.now()}`;
+      tx.gateway_signature = gatewaySignature;
+      tx.payment_method = paymentMethod;
+      tx.gateway_event_id = eventId;
+      tx.paid_at = now;
+      tx.updated_at = now;
+    } else {
+      store.payment_transactions.push({
+        id: store.payment_transactions.length + 1,
+        registration_id: registrationId,
+        gateway_provider: isManualOverride ? 'admin_manual_override' : 'payment_gateway',
+        gateway_order_id: gatewayOrderId || `manual_${Date.now()}`,
+        gateway_payment_id: gatewayPaymentId || `pay_manual_${Date.now()}`,
+        gateway_signature: gatewaySignature,
+        amount: 350.0,
+        currency: 'INR',
+        payment_method: paymentMethod,
+        status: 'PAID',
+        gateway_event_id: eventId,
+        paid_at: now,
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
+    const auditAction = isManualOverride ? 'PAYMENT_MANUALLY_CONFIRMED' : 'PAYMENT_CONFIRMED_BY_GATEWAY';
+    const auditDetails = isManualOverride
+      ? `Emergency manual payment override confirmed by Admin ID ${adminId || 'N/A'} (${confirmedBy}). Reason: ${overrideReason || 'Administrative exception'}. Ticket ${newTicketId} issued.`
+      : `Payment verified via gateway. Order: ${gatewayOrderId || 'N/A'}, Payment: ${gatewayPaymentId || 'N/A'}. Ticket ${newTicketId} issued.`;
+
+    store.audit_logs.push({
+      id: store.audit_logs.length + 1,
+      admin_id: adminId || null,
+      attendee_id: registrationId,
+      action: auditAction,
+      details: auditDetails,
+      created_at: now,
+    });
+
+    saveLocalStore(store);
+    return { attendee, isNewPass: true };
+  }
+}
+
+/**
+ * Marks payment as FAILED or EXPIRED
+ */
+export async function markPaymentFailed(params: {
+  registrationId: number;
+  gatewayOrderId?: string;
+  reason?: string;
+  status?: 'FAILED' | 'EXPIRED';
+}): Promise<void> {
+  const { registrationId, gatewayOrderId, reason = 'Payment failed or declined', status = 'FAILED' } = params;
+
+  if (isUsingMySQL() && mysqlPool) {
+    await mysqlPool.query(
+      `UPDATE attendees 
+       SET payment_status = ?, entry_pass_status = 'NOT_CREATED'
+       WHERE id = ? AND payment_status != 'PAID'`,
+      [status, registrationId]
+    );
+
+    if (gatewayOrderId) {
+      await mysqlPool.query(
+        'UPDATE payment_transactions SET status = ? WHERE gateway_order_id = ?',
+        [status, gatewayOrderId]
+      );
+    }
+  } else {
+    const store = loadLocalStore();
+    const attendee = store.attendees.find((a) => a.id === registrationId);
+    if (attendee && attendee.payment_status !== 'PAID') {
+      attendee.payment_status = status;
+      attendee.entry_pass_status = 'NOT_CREATED';
+      attendee.updated_at = new Date().toISOString();
+    }
+    if (gatewayOrderId) {
+      const tx = store.payment_transactions.find((t) => t.gateway_order_id === gatewayOrderId);
+      if (tx) {
+        tx.status = status;
+        tx.updated_at = new Date().toISOString();
+      }
+    }
+    saveLocalStore(store);
+  }
+}
+
+/**
  * Retrieves public attendee ticket by secure access token
  */
 export async function getAttendeeByAccessToken(token: string): Promise<Attendee | null> {
@@ -367,12 +785,12 @@ export async function getAttendeeByAccessToken(token: string): Promise<Attendee 
     return rows.length > 0 ? (rows[0] as Attendee) : null;
   } else {
     const store = loadLocalStore();
-    return store.attendees.find((a) => a.access_token === token || a.qr_token === token) || null;
+    return store.attendees.find((a) => a.access_token === token || (a.qr_token && a.qr_token === token)) || null;
   }
 }
 
 /**
- * Finds attendee by ticket ID
+ * Finds attendee by ticket ID (e.g. FM26-001)
  */
 export async function getAttendeeByTicketId(ticketId: string): Promise<Attendee | null> {
   const cleanId = ticketId.trim().toUpperCase();
@@ -384,7 +802,7 @@ export async function getAttendeeByTicketId(ticketId: string): Promise<Attendee 
     return rows.length > 0 ? (rows[0] as Attendee) : null;
   } else {
     const store = loadLocalStore();
-    return store.attendees.find((a) => a.ticket_id.toUpperCase() === cleanId) || null;
+    return store.attendees.find((a) => a.ticket_id && a.ticket_id.toUpperCase() === cleanId) || null;
   }
 }
 
@@ -409,7 +827,7 @@ export async function lookupAttendee(query: string): Promise<Attendee | null> {
     return (
       store.attendees.find(
         (a) =>
-          a.ticket_id.toLowerCase() === cleanQ ||
+          (a.ticket_id && a.ticket_id.toLowerCase() === cleanQ) ||
           a.phone.replace(/\s+/g, '').includes(cleanQ.replace(/\s+/g, '')) ||
           a.email.toLowerCase() === cleanQ ||
           (a.student_roll_id && a.student_roll_id.toLowerCase() === cleanQ)
@@ -419,39 +837,153 @@ export async function lookupAttendee(query: string): Promise<Attendee | null> {
 }
 
 /**
- * Confirm payment by Admin
+ * Requirement 13: Secure Two-Factor Pass Lookup
+ * Requires BOTH Phone AND (Email or Student Roll ID) to prevent ticket harvesting
  */
-export async function confirmPayment(attendeeId: number, adminEmail: string): Promise<Attendee | null> {
-  const now = new Date().toISOString();
+export async function lookupAttendeeSecure(phone: string, emailOrRoll: string): Promise<Attendee | null> {
+  const cleanPhone = phone.trim().replace(/\D/g, '');
+  const cleanKey = emailOrRoll.trim().toLowerCase();
+  if (!cleanPhone || !cleanKey) return null;
+
+  if (isUsingMySQL() && mysqlPool) {
+    const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+      `SELECT * FROM attendees 
+       WHERE (REPLACE(REPLACE(phone, ' ', ''), '+91', '') LIKE ?)
+         AND (LOWER(email) = ? OR LOWER(student_roll_id) = ?)
+       LIMIT 1`,
+      [`%${cleanPhone.slice(-10)}%`, cleanKey, cleanKey]
+    );
+    return rows.length > 0 ? (rows[0] as Attendee) : null;
+  } else {
+    const store = loadLocalStore();
+    return (
+      store.attendees.find((a) => {
+        const p = a.phone.replace(/\D/g, '');
+        const matchesPhone = p.endsWith(cleanPhone.slice(-10)) || cleanPhone.endsWith(p.slice(-10));
+        const matchesEmailOrRoll =
+          a.email.toLowerCase() === cleanKey ||
+          (a.student_roll_id && a.student_roll_id.toLowerCase() === cleanKey);
+        return matchesPhone && matchesEmailOrRoll;
+      }) || null
+    );
+  }
+}
+
+/**
+ * Requirement 7: Get Payment Transaction by Gateway Order ID to verify ownership
+ */
+export async function getPaymentTransactionByOrderId(orderId: string): Promise<PaymentTransaction | null> {
+  if (isUsingMySQL() && mysqlPool) {
+    const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(
+      'SELECT * FROM payment_transactions WHERE gateway_order_id = ?',
+      [orderId]
+    );
+    return rows.length > 0 ? (rows[0] as PaymentTransaction) : null;
+  } else {
+    const store = loadLocalStore();
+    return store.payment_transactions.find((t) => t.gateway_order_id === orderId) || null;
+  }
+}
+
+/**
+ * Requirement 10: Emergency Admin Manual Payment Override
+ * Requires authenticated admin, admin ID, timestamp, and mandatory audit reason.
+ * Distinctly logs PAYMENT_MANUALLY_CONFIRMED.
+ */
+export async function confirmPaymentManualOverride(params: {
+  attendeeId: number;
+  adminId: number;
+  adminEmail: string;
+  reason: string;
+}): Promise<Attendee | null> {
+  const { attendeeId, adminId, adminEmail, reason } = params;
+  if (!reason || reason.trim().length < 5) {
+    throw new Error('A detailed justification (min 5 characters) is required for emergency manual payment override.');
+  }
+
+  const res = await markPaymentSuccessfulAndGeneratePass({
+    registrationId: attendeeId,
+    confirmedBy: adminEmail,
+    paymentMethod: 'admin_manual_override',
+    isManualOverride: true,
+    overrideReason: reason.trim(),
+    adminId,
+  });
+
+  return res.attendee;
+}
+
+/**
+ * Backward-compatible wrapper for manual payment confirmation
+ */
+export async function confirmPayment(attendeeId: number, adminEmail: string, reason?: string, adminId?: number): Promise<Attendee | null> {
+  return confirmPaymentManualOverride({
+    attendeeId,
+    adminId: adminId || 1,
+    adminEmail,
+    reason: reason || 'Manual payment reconciliation confirmed by admin',
+  });
+}
+
+/**
+ * Requirement 12: Admin Refund & Entry Pass Revocation
+ * Sets payment_status = REFUNDED and entry_pass_status = REVOKED
+ * Scanning a revoked pass will immediately reject admission at turnstiles.
+ */
+export async function refundPaymentAndRevokePass(params: {
+  attendeeId: number;
+  adminId: number;
+  adminEmail: string;
+  reason: string;
+}): Promise<{ success: boolean; attendee: Attendee }> {
+  const { attendeeId, adminId, adminEmail, reason } = params;
+  if (!reason || reason.trim().length < 5) {
+    throw new Error('A reason for refund and ticket revocation is mandatory.');
+  }
 
   if (isUsingMySQL() && mysqlPool) {
     const conn = await mysqlPool.getConnection();
     try {
       await conn.beginTransaction();
+
       const [rows] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT * FROM attendees WHERE id = ? FOR UPDATE',
         [attendeeId]
       );
+
       if (rows.length === 0) {
         await conn.rollback();
-        return null;
+        throw new Error(`Attendee #${attendeeId} not found.`);
       }
 
       await conn.query(
         `UPDATE attendees 
-         SET payment_status = 'PAID', 
-             payment_confirmed_at = NOW(), 
-             payment_confirmed_by = ? 
+         SET payment_status = 'REFUNDED',
+             entry_pass_status = 'REVOKED'
          WHERE id = ?`,
-        [adminEmail, attendeeId]
+        [attendeeId]
       );
+
+      await conn.query(
+        `UPDATE payment_transactions 
+         SET status = 'REFUNDED' 
+         WHERE registration_id = ?`,
+        [attendeeId]
+      );
+
+      await conn.query(
+        `INSERT INTO audit_logs (admin_id, attendee_id, action, details)
+         VALUES (?, ?, 'PAYMENT_REFUNDED_PASS_REVOKED', ?)`,
+        [adminId, attendeeId, `Pass revoked and marked REFUNDED by ${adminEmail}. Reason: ${reason}`]
+      );
+
       await conn.commit();
 
-      const [updated] = await conn.query<mysql.RowDataPacket[]>(
+      const [updatedRows] = await conn.query<mysql.RowDataPacket[]>(
         'SELECT * FROM attendees WHERE id = ?',
         [attendeeId]
       );
-      return updated[0] as Attendee;
+      return { success: true, attendee: updatedRows[0] as Attendee };
     } catch (err) {
       await conn.rollback();
       throw err;
@@ -461,19 +993,35 @@ export async function confirmPayment(attendeeId: number, adminEmail: string): Pr
   } else {
     const store = loadLocalStore();
     const attendee = store.attendees.find((a) => a.id === attendeeId);
-    if (!attendee) return null;
+    if (!attendee) throw new Error(`Attendee #${attendeeId} not found.`);
 
-    attendee.payment_status = 'PAID';
-    attendee.payment_confirmed_at = now;
-    attendee.payment_confirmed_by = adminEmail;
-    attendee.updated_at = now;
+    attendee.payment_status = 'REFUNDED';
+    attendee.entry_pass_status = 'REVOKED';
+    attendee.updated_at = new Date().toISOString();
+
+    const tx = store.payment_transactions.find((t) => t.registration_id === attendeeId);
+    if (tx) {
+      tx.status = 'REFUNDED';
+      tx.updated_at = new Date().toISOString();
+    }
+
+    store.audit_logs.push({
+      id: store.audit_logs.length + 1,
+      admin_id: adminId,
+      attendee_id: attendeeId,
+      action: 'PAYMENT_REFUNDED_PASS_REVOKED',
+      details: `Pass revoked and marked REFUNDED by ${adminEmail}. Reason: ${reason}`,
+      created_at: new Date().toISOString(),
+    });
+
     saveLocalStore(store);
-    return attendee;
+    return { success: true, attendee };
   }
 }
 
 /**
  * Verify QR Token against MySQL
+ * Only allows entry if payment_status is PAID and entry_pass_status is ACTIVE
  */
 export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
   const token = qrToken.trim();
@@ -493,7 +1041,7 @@ export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
     }
   } else {
     const store = loadLocalStore();
-    attendee = store.attendees.find((a) => a.qr_token === token || a.ticket_id === token) || null;
+    attendee = store.attendees.find((a) => (a.qr_token && a.qr_token === token) || (a.ticket_id && a.ticket_id === token)) || null;
   }
 
   if (!attendee) {
@@ -503,9 +1051,9 @@ export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
     };
   }
 
-  if (attendee.payment_status !== 'PAID') {
+  if (attendee.payment_status !== 'PAID' || attendee.entry_pass_status === 'NOT_CREATED') {
     return {
-      status: 'PAYMENT_PENDING',
+      status: 'PAYMENT_NOT_CONFIRMED',
       message: '⚠️ PAYMENT NOT CONFIRMED: Pass is not active until payment is confirmed.',
       attendee: {
         id: attendee.id,
@@ -516,6 +1064,28 @@ export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
         phone: attendee.phone,
         email: attendee.email,
         payment_status: attendee.payment_status,
+        entry_pass_status: attendee.entry_pass_status,
+        check_in_status: attendee.check_in_status,
+        check_in_time: attendee.check_in_time,
+        payment_confirmed_at: attendee.payment_confirmed_at,
+      },
+    };
+  }
+
+  if (attendee.entry_pass_status === 'REVOKED') {
+    return {
+      status: 'ENTRY_PASS_REVOKED',
+      message: '❌ ENTRY PASS REVOKED: This pass has been cancelled or refunded.',
+      attendee: {
+        id: attendee.id,
+        ticket_id: attendee.ticket_id,
+        full_name: attendee.full_name,
+        category: attendee.category,
+        college: attendee.college,
+        phone: attendee.phone,
+        email: attendee.email,
+        payment_status: attendee.payment_status,
+        entry_pass_status: attendee.entry_pass_status,
         check_in_status: attendee.check_in_status,
         check_in_time: attendee.check_in_time,
         payment_confirmed_at: attendee.payment_confirmed_at,
@@ -536,6 +1106,7 @@ export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
         phone: attendee.phone,
         email: attendee.email,
         payment_status: attendee.payment_status,
+        entry_pass_status: attendee.entry_pass_status,
         check_in_status: attendee.check_in_status,
         check_in_time: attendee.check_in_time,
         payment_confirmed_at: attendee.payment_confirmed_at,
@@ -555,6 +1126,7 @@ export async function verifyQrToken(qrToken: string): Promise<VerifyQrResult> {
       phone: attendee.phone,
       email: attendee.email,
       payment_status: attendee.payment_status,
+      entry_pass_status: attendee.entry_pass_status,
       check_in_status: attendee.check_in_status,
       check_in_time: attendee.check_in_time,
       payment_confirmed_at: attendee.payment_confirmed_at,
@@ -587,9 +1159,14 @@ export async function performCheckIn(
 
       const attendee = rows[0] as Attendee;
 
-      if (attendee.payment_status !== 'PAID') {
+      if (attendee.payment_status !== 'PAID' || !attendee.ticket_id) {
         await conn.rollback();
-        return { success: false, message: 'Cannot check in: Payment status is PENDING or FAILED.' };
+        return { success: false, message: 'Cannot check in: Payment status is PENDING or ticket not issued.' };
+      }
+
+      if (attendee.entry_pass_status === 'REVOKED') {
+        await conn.rollback();
+        return { success: false, message: 'Cannot check in: Entry pass has been revoked.' };
       }
 
       if (attendee.check_in_status === 'CHECKED_IN') {
@@ -605,7 +1182,9 @@ export async function performCheckIn(
       // Mark as CHECKED_IN
       await conn.query(
         `UPDATE attendees 
-         SET check_in_status = 'CHECKED_IN', check_in_time = NOW() 
+         SET check_in_status = 'CHECKED_IN',
+             entry_pass_status = 'CHECKED_IN',
+             check_in_time = NOW() 
          WHERE id = ?`,
         [attendeeId]
       );
@@ -640,7 +1219,7 @@ export async function performCheckIn(
     const attendee = store.attendees.find((a) => a.id === attendeeId);
     if (!attendee) return { success: false, message: 'Ticket record not found.' };
 
-    if (attendee.payment_status !== 'PAID') {
+    if (attendee.payment_status !== 'PAID' || !attendee.ticket_id) {
       return { success: false, message: 'Cannot check in: Payment is not confirmed.' };
     }
 
@@ -655,6 +1234,7 @@ export async function performCheckIn(
 
     const now = new Date().toISOString();
     attendee.check_in_status = 'CHECKED_IN';
+    attendee.entry_pass_status = 'CHECKED_IN';
     attendee.check_in_time = now;
     attendee.updated_at = now;
 
@@ -676,15 +1256,20 @@ export async function performCheckIn(
 }
 
 /**
- * Calculates Dashboard Statistics
+ * Calculates Dashboard Statistics including detailed payment pipeline statuses
  */
 export async function getDashboardStats(): Promise<DashboardStats> {
   if (isUsingMySQL() && mysqlPool) {
     const [rows] = await mysqlPool.query<mysql.RowDataPacket[]>(`
       SELECT 
         COUNT(*) AS total_registered,
-        SUM(CASE WHEN payment_status = 'PAID' THEN 1 ELSE 0 END) AS total_paid,
-        SUM(CASE WHEN payment_status = 'PENDING' THEN 1 ELSE 0 END) AS payment_pending,
+        SUM(CASE WHEN payment_status = 'PENDING' THEN 1 ELSE 0 END) AS pending_payments,
+        SUM(CASE WHEN payment_status = 'PROCESSING' THEN 1 ELSE 0 END) AS processing_payments,
+        SUM(CASE WHEN payment_status = 'PAID' THEN 1 ELSE 0 END) AS successful_payments,
+        SUM(CASE WHEN payment_status = 'FAILED' THEN 1 ELSE 0 END) AS failed_payments,
+        SUM(CASE WHEN payment_status = 'EXPIRED' THEN 1 ELSE 0 END) AS expired_payments,
+        SUM(CASE WHEN payment_status = 'REFUNDED' THEN 1 ELSE 0 END) AS refunded_payments,
+        SUM(CASE WHEN entry_pass_status = 'ACTIVE' OR entry_pass_status = 'CHECKED_IN' THEN 1 ELSE 0 END) AS active_entry_passes,
         SUM(CASE WHEN check_in_status = 'CHECKED_IN' THEN 1 ELSE 0 END) AS total_checked_in,
         SUM(CASE WHEN check_in_status = 'NOT_CHECKED_IN' THEN 1 ELSE 0 END) AS not_checked_in,
         SUM(CASE WHEN category = 'FRESHER' THEN 1 ELSE 0 END) AS total_freshers,
@@ -694,8 +1279,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const r = rows[0];
     return {
       total_registered: Number(r.total_registered || 0),
-      total_paid: Number(r.total_paid || 0),
-      payment_pending: Number(r.payment_pending || 0),
+      pending_payments: Number(r.pending_payments || 0),
+      processing_payments: Number(r.processing_payments || 0),
+      successful_payments: Number(r.successful_payments || 0),
+      failed_payments: Number(r.failed_payments || 0),
+      expired_payments: Number(r.expired_payments || 0),
+      refunded_payments: Number(r.refunded_payments || 0),
+      active_entry_passes: Number(r.active_entry_passes || 0),
       total_checked_in: Number(r.total_checked_in || 0),
       not_checked_in: Number(r.not_checked_in || 0),
       total_freshers: Number(r.total_freshers || 0),
@@ -706,8 +1296,13 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     const atts = store.attendees;
     return {
       total_registered: atts.length,
-      total_paid: atts.filter((a) => a.payment_status === 'PAID').length,
-      payment_pending: atts.filter((a) => a.payment_status === 'PENDING').length,
+      pending_payments: atts.filter((a) => a.payment_status === 'PENDING').length,
+      processing_payments: atts.filter((a) => a.payment_status === 'PROCESSING').length,
+      successful_payments: atts.filter((a) => a.payment_status === 'PAID').length,
+      failed_payments: atts.filter((a) => a.payment_status === 'FAILED').length,
+      expired_payments: atts.filter((a) => a.payment_status === 'EXPIRED').length,
+      refunded_payments: atts.filter((a) => a.payment_status === 'REFUNDED').length,
+      active_entry_passes: atts.filter((a) => a.entry_pass_status === 'ACTIVE' || a.entry_pass_status === 'CHECKED_IN').length,
       total_checked_in: atts.filter((a) => a.check_in_status === 'CHECKED_IN').length,
       not_checked_in: atts.filter((a) => a.check_in_status === 'NOT_CHECKED_IN').length,
       total_freshers: atts.filter((a) => a.category === 'FRESHER').length,
@@ -776,7 +1371,7 @@ export async function listAttendees(params: {
       const s = search.trim().toLowerCase();
       filtered = filtered.filter(
         (a) =>
-          a.ticket_id.toLowerCase().includes(s) ||
+          (a.ticket_id && a.ticket_id.toLowerCase().includes(s)) ||
           a.full_name.toLowerCase().includes(s) ||
           a.phone.toLowerCase().includes(s) ||
           a.email.toLowerCase().includes(s)

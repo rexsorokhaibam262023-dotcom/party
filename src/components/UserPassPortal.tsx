@@ -13,6 +13,7 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
     category: 'FRESHER',
     college: 'B.Arch - Architecture',
     paymentStatus: 'PAID',
+    entryPassStatus: 'ACTIVE',
     checkInStatus: 'NOT_CHECKED_IN',
     eventDate: '02 OCT 2026',
     doorsOpen: '5:30 PM Sharp',
@@ -45,14 +46,131 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
   const [showGoogleFormModal, setShowGoogleFormModal] = useState(false);
 
+  const [activeAccessToken, setActiveAccessToken] = useState<string | null>(initialAccessToken || null);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
   // Load pass if initialAccessToken is provided
   useEffect(() => {
     if (initialAccessToken) {
+      setActiveAccessToken(initialAccessToken);
       loadPassByToken(initialAccessToken);
     }
   }, [initialAccessToken]);
 
+  // Requirement 17: Payment Status Polling
+  // While pass is PENDING and activeAccessToken exists, poll every 4 seconds
+  useEffect(() => {
+    if (!activeAccessToken || ticketData.paymentStatus === 'PAID') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/payments/status-by-token/${encodeURIComponent(activeAccessToken)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.isPaid) {
+            await loadPassByToken(activeAccessToken);
+          }
+        }
+      } catch (e) {
+        // Silently retry on next tick
+      }
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [activeAccessToken, ticketData.paymentStatus]);
+
+  const loadRazorpayScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if ((window as any).Razorpay) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
+  const handleInitiatePayment = async () => {
+    if (!activeAccessToken) {
+      alert('Please register or retrieve your pass first.');
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      const res = await fetch('/api/payments/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: activeAccessToken }),
+      });
+      const data = await res.json();
+
+      if (data.alreadyPaid) {
+        await loadPassByToken(activeAccessToken);
+        setPaymentLoading(false);
+        return;
+      }
+
+      if (!res.ok || !data.order) {
+        alert(data.error || 'Failed to create payment gateway order.');
+        setPaymentLoading(false);
+        return;
+      }
+
+      const { order } = data;
+      const isScriptLoaded = await loadRazorpayScript();
+
+      if (isScriptLoaded && (window as any).Razorpay && order.keyId) {
+        const options = {
+          key: order.keyId,
+          amount: order.amount * 100,
+          currency: order.currency || 'INR',
+          name: "MSAP 53rd Freshers' Meet 2026",
+          description: 'Official Gala All-Access & Food Pass (₹350)',
+          order_id: order.orderId,
+          prefill: {
+            name: ticketData.fullName,
+          },
+          theme: {
+            color: '#8B5CF6',
+          },
+          handler: async function (response: any) {
+            // Requirement 1, 6, 7: Real server-side cryptographic checkout verification
+            const verifyRes = await fetch('/api/payments/verify-checkout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                accessToken: activeAccessToken,
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+              }),
+            });
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok && verifyData.success) {
+              await loadPassByToken(activeAccessToken);
+            } else {
+              alert(verifyData.error || 'Payment signature verification failed.');
+            }
+          },
+        };
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+      } else {
+        alert(`Payment order created: ${order.orderId}. Please complete payment via gateway webhook.`);
+      }
+    } catch (err) {
+      console.error('Payment checkout error:', err);
+      alert('Error communicating with payment gateway.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   const loadPassByToken = async (token: string) => {
+    setActiveAccessToken(token);
     try {
       const res = await fetch(`/api/tickets/${encodeURIComponent(token)}`);
       if (res.ok) {
@@ -132,7 +250,8 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
       const data = await res.json();
 
       if (res.ok && data.attendee) {
-        setFormSuccessMessage(`✅ Registration saved in MySQL! Assigned Ticket: ${data.attendee.ticket_id}`);
+        const ticketDisplay = data.attendee.ticket_id || 'PENDING (Issued Upon Payment)';
+        setFormSuccessMessage(`✅ Registration saved in MySQL! Ticket: ${ticketDisplay}`);
         // Load the newly issued pass
         if (data.attendee.access_token) {
           await loadPassByToken(data.attendee.access_token);
@@ -156,6 +275,7 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
 
   // Copy Ticket ID
   const handleCopyTicket = () => {
+    if (!ticketData.ticketId) return;
     navigator.clipboard.writeText(ticketData.ticketId).catch(() => {});
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
@@ -744,8 +864,8 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
                         </span>
                         <div className="px-2 py-1 rounded bg-[#0A0E18] border border-[#494454]/30 text-[10px] font-mono-code text-[#38BDF8] w-full truncate">
                           {isPaid
-                            ? `${ticketData.ticketId} | ${ticketData.fullName} | ${ticketData.category} | 02 OCT 2026 | VALID_PAID`
-                            : `${ticketData.ticketId} | ${ticketData.fullName} | PAYMENT_PENDING_APPROVAL`}
+                            ? `${ticketData.ticketId || 'VERIFIED'} | ${ticketData.fullName} | ${ticketData.category} | 02 OCT 2026 | VALID_PAID`
+                            : `${ticketData.ticketId || 'PASS_PENDING'} | ${ticketData.fullName} | PAYMENT_PENDING_APPROVAL`}
                         </div>
                       </div>
                     </div>
@@ -771,18 +891,20 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">TICKET NO.</span>
                         <div className="flex items-center gap-1">
                           <span className="font-mono-code text-[17px] font-black text-indigo-700 tracking-wider">
-                            {ticketData.ticketId}
+                            {ticketData.ticketId || 'PENDING'}
                           </span>
-                          <button
-                            onClick={handleCopyTicket}
-                            className="text-slate-400 hover:text-slate-700 cursor-pointer"
-                            title="Copy Ticket ID"
-                            type="button"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">
-                              {isCopied ? 'done' : 'content_copy'}
-                            </span>
-                          </button>
+                          {ticketData.ticketId && (
+                            <button
+                              onClick={handleCopyTicket}
+                              className="text-slate-400 hover:text-slate-700 cursor-pointer"
+                              title="Copy Ticket ID"
+                              type="button"
+                            >
+                              <span className="material-symbols-outlined text-[16px]">
+                                {isCopied ? 'done' : 'content_copy'}
+                              </span>
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -832,17 +954,33 @@ export const UserPassPortal: React.FC<UserPassPortalProps> = ({ initialAccessTok
 
                 {/* ACTIONS BELOW TICKET */}
                 <div className="flex flex-col gap-2 mt-1">
-                  <button
-                    onClick={handleDownloadTicket}
-                    disabled={downloading}
-                    className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white font-headline-sm text-[16px] shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(139,92,246,0.55)] transition-all cursor-pointer font-bold"
-                    type="button"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">
-                      {downloading ? 'progress_activity' : 'file_download'}
-                    </span>
-                    <span>{downloading ? 'Preparing High-Res PDF Pass...' : 'Download Ticket (PDF / High-Res Pass)'}</span>
-                  </button>
+                  {!isPaid ? (
+                    <button
+                      onClick={handleInitiatePayment}
+                      disabled={paymentLoading}
+                      className="w-full flex items-center justify-center gap-2 py-4 px-5 rounded-xl bg-gradient-to-r from-[#10B981] via-[#059669] to-[#047857] text-white font-headline-sm text-[16px] shadow-[0_0_24px_rgba(16,185,129,0.4)] hover:shadow-[0_0_32px_rgba(16,185,129,0.6)] transition-all cursor-pointer font-bold"
+                      type="button"
+                    >
+                      <span className="material-symbols-outlined text-[22px]">
+                        {paymentLoading ? 'progress_activity' : 'credit_card'}
+                      </span>
+                      <span>
+                        {paymentLoading ? 'Connecting Secure Gateway...' : 'Pay ₹350 via Razorpay / UPI & Unlock Pass'}
+                      </span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleDownloadTicket}
+                      disabled={downloading}
+                      className="w-full flex items-center justify-center gap-2 py-3.5 px-5 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white font-headline-sm text-[16px] shadow-[0_0_20px_rgba(139,92,246,0.35)] hover:shadow-[0_0_28px_rgba(139,92,246,0.55)] transition-all cursor-pointer font-bold"
+                      type="button"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">
+                        {downloading ? 'progress_activity' : 'file_download'}
+                      </span>
+                      <span>{downloading ? 'Preparing High-Res PDF Pass...' : 'Download Ticket (PDF / High-Res Pass)'}</span>
+                    </button>
+                  )}
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <button

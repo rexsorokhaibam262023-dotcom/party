@@ -10,9 +10,16 @@ const PORT = 3000;
 async function startServer() {
   const app = express();
 
-  // Basic security and parsing middlewares
+  // Basic security and parsing middlewares with raw body capture for webhook HMAC
   app.use(cors({ origin: true, credentials: true }));
-  app.use(express.json({ limit: '10mb' }));
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    })
+  );
   app.use(express.urlencoded({ extended: true }));
 
   // Initialize relational storage / MySQL

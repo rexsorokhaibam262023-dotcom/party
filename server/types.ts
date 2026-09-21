@@ -3,22 +3,24 @@
  */
 
 export type AttendeeCategory = 'FRESHER' | 'SENIOR';
-export type PaymentStatus = 'PENDING' | 'PAID' | 'FAILED';
+export type PaymentStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'REFUNDED';
+export type EntryPassStatus = 'NOT_CREATED' | 'ACTIVE' | 'CHECKED_IN' | 'REVOKED';
 export type RegistrationStatus = 'REGISTERED' | 'CANCELLED';
 export type CheckInStatus = 'NOT_CHECKED_IN' | 'CHECKED_IN';
 
 export interface Attendee {
   id: number;
-  ticket_id: string; // e.g. "FM26-001"
+  ticket_id: string | null; // NULL until payment is verified PAID
   full_name: string;
   phone: string;
   email: string;
   college: string;
   category: AttendeeCategory;
   payment_status: PaymentStatus;
+  entry_pass_status: EntryPassStatus;
   registration_status: RegistrationStatus;
-  qr_token: string; // Cryptographically random secure token for gate check-in
-  access_token: string; // Secure token for user ticket retrieval
+  qr_token: string | null; // Cryptographically random secure token, NULL until PAID
+  access_token: string; // Secure token for user registration/ticket retrieval
   check_in_status: CheckInStatus;
   google_response_id?: string | null;
   student_roll_id?: string | null;
@@ -26,6 +28,23 @@ export interface Attendee {
   payment_confirmed_at?: string | null;
   payment_confirmed_by?: string | null;
   check_in_time?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PaymentTransaction {
+  id: number;
+  registration_id: number;
+  gateway_provider: string;
+  gateway_order_id: string;
+  gateway_payment_id?: string | null;
+  gateway_signature?: string | null;
+  amount: number;
+  currency: string;
+  payment_method?: string | null;
+  status: PaymentStatus;
+  gateway_event_id?: string | null;
+  paid_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -46,10 +65,25 @@ export interface CheckinRecord {
   check_in_time: string;
 }
 
+export interface AuditLogRecord {
+  id: number;
+  admin_id?: number | null;
+  attendee_id?: number | null;
+  action: string;
+  details?: string | null;
+  ip_address?: string | null;
+  created_at: string;
+}
+
 export interface DashboardStats {
   total_registered: number;
-  total_paid: number;
-  payment_pending: number;
+  pending_payments: number;
+  processing_payments: number;
+  successful_payments: number;
+  failed_payments: number;
+  expired_payments: number;
+  refunded_payments: number;
+  active_entry_passes: number;
   total_checked_in: number;
   not_checked_in: number;
   total_freshers: number;
@@ -68,17 +102,18 @@ export interface CreateRegistrationDTO {
 }
 
 export interface VerifyQrResult {
-  status: 'VALID' | 'ALREADY_CHECKED_IN' | 'PAYMENT_PENDING' | 'INVALID';
+  status: 'VALID' | 'ALREADY_CHECKED_IN' | 'PAYMENT_NOT_CONFIRMED' | 'ENTRY_PASS_REVOKED' | 'INVALID';
   message: string;
   attendee?: {
     id: number;
-    ticket_id: string;
+    ticket_id: string | null;
     full_name: string;
     category: AttendeeCategory;
     college: string;
     phone: string;
     email: string;
     payment_status: PaymentStatus;
+    entry_pass_status: EntryPassStatus;
     check_in_status: CheckInStatus;
     check_in_time?: string | null;
     payment_confirmed_at?: string | null;
