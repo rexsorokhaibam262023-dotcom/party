@@ -1,48 +1,57 @@
 @import "tailwindcss";
 
+:root {
+  --bg: #061A2E;
+  --surface: #0C2C4A;
+  --surface-hover: #103A5F;
+  --border: #164468;
+
+  --primary: #38BDF8;
+  --primary-hover: #7DD3FC;
+  --primary-deep: #0284C7;
+  --on-primary: #061A2E;
+
+  --accent: #FDBA74;
+  --accent-soft: rgba(253, 186, 116, 0.15);
+
+  --text: #EAF6FF;
+  --text-muted: #9DB8CF;
+
+  --success: #34D399;
+  --danger: #FB7185;
+
+  --ring: rgba(56, 189, 248, 0.35);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
 @theme {
-  --color-midnight-base: #0B0F19;
-  --color-midnight-surface: #111827;
-  --color-card-glass: #1E2235;
-  --color-text-primary: #F8FAFC;
-  --color-text-muted: #94A3B8;
-  --color-festive-rose: #F43F5E;
-  --color-neon-pink: #EC4899;
-  --color-electric-cyan: #38BDF8;
-  --color-electric-blue-deep: #0EA5E9;
-  --color-gradient-start: #8B5CF6;
-  --color-gradient-end: #6366F1;
-  --color-status-success: #10B981;
-  
-  --color-primary: #d0bcff;
-  --color-on-primary: #3c0091;
-  --color-primary-container: #a078ff;
-  --color-on-primary-container: #340080;
-  
-  --color-secondary: #7bd0ff;
-  --color-on-secondary: #00354a;
-  --color-secondary-fixed: #c4e7ff;
-  
-  --color-tertiary-container: #ff516a;
-  
-  --color-surface-container-lowest: #0a0e18;
-  --color-surface-container-low: #171b26;
-  --color-surface-container: #1c1f2a;
-  --color-surface-container-high: #262a35;
-  --color-surface-container-highest: #313540;
-  --color-surface-bright: #353944;
-  
-  --color-on-surface: #dfe2f1;
-  --color-on-surface-variant: #cbc3d7;
-  --color-outline-variant: #494454;
-  
-  --spacing-space-xs: 0.25rem;
-  --spacing-space-sm: 0.5rem;
-  --spacing-space-md: 1rem;
-  --spacing-space-lg: 1.5rem;
-  --spacing-space-xl: 2.5rem;
-  --spacing-margin: 1.25rem;
-  --spacing-margin-desktop: 3rem;
+  --color-bg: #061A2E;
+  --color-surface: #0C2C4A;
+  --color-surface-hover: #103A5F;
+  --color-border: #164468;
+
+  --color-primary: #38BDF8;
+  --color-primary-hover: #7DD3FC;
+  --color-primary-deep: #0284C7;
+  --color-on-primary: #061A2E;
+
+  --color-accent: #FDBA74;
+  --color-accent-soft: rgba(253, 186, 116, 0.15);
+
+  --color-text: #EAF6FF;
+  --color-text-muted: #9DB8CF;
+
+  --color-success: #34D399;
+  --color-danger: #FB7185;
+
+  --color-midnight-base: #061A2E;
+  --color-midnight-surface: #0C2C4A;
+  --color-card-glass: #0C2C4A;
+  --color-text-primary: #EAF6FF;
 
   --font-display-title: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
   --font-mono-code: 'JetBrains Mono', monospace;
@@ -52,8 +61,8 @@
   html, body {
     margin: 0;
     padding: 0;
-    background-color: #0B0F19;
-    color: #DFE2F1;
+    background-color: #061A2E;
+    color: #EAF6FF;
     font-family: 'Plus Jakarta Sans', sans-serif;
   }
 }

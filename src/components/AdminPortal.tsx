@@ -352,10 +352,10 @@ export const AdminPortal: React.FC = () => {
   // ----------------------------------------------------
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1] flex items-center justify-center">
+      <div className="min-h-screen bg-[#061A2E] text-[#EAF6FF] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <span className="material-symbols-outlined text-[#8B5CF6] text-4xl animate-spin">progress_activity</span>
-          <span className="font-mono-code text-sm text-[#94A3B8]">Validating Administrative Session...</span>
+          <span className="material-symbols-outlined text-[#38BDF8] text-4xl animate-spin">progress_activity</span>
+          <span className="font-mono-code text-sm text-[#9DB8CF]">Validating Administrative Session...</span>
         </div>
       </div>
     );
@@ -363,23 +363,23 @@ export const AdminPortal: React.FC = () => {
 
   if (!token || !adminUser) {
     return (
-      <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1] flex items-center justify-center p-4">
-        <div className="relative w-full max-w-md bg-[#171B26] border border-[#262A35] rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden">
+      <div className="min-h-screen bg-[#061A2E] text-[#EAF6FF] flex items-center justify-center p-4">
+        <div className="relative w-full max-w-md bg-[#0C2C4A] border border-[#164468] rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden">
           {/* Subtle Accent Glow */}
-          <div className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-[#8B5CF6]/20 blur-3xl pointer-events-none"></div>
+          <div className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-[#38BDF8]/10 blur-3xl pointer-events-none"></div>
 
           {/* Access Denied Header */}
           <div className="flex flex-col items-center text-center gap-2">
-            <div className="w-14 h-14 rounded-2xl bg-[#FF516A]/15 border border-[#F43F5E]/30 flex items-center justify-center text-[#F43F5E] shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+            <div className="w-14 h-14 rounded-2xl bg-[#FB7185]/15 border border-[#FB7185]/30 flex items-center justify-center text-[#FB7185] shadow-[0_0_20px_rgba(251,113,133,0.25)]">
               <span className="material-symbols-outlined text-3xl">shield</span>
             </div>
-            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#FF516A]/10 text-[#F43F5E] text-xs font-mono-code font-bold uppercase tracking-wider mt-1">
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#FB7185]/10 text-[#FB7185] text-xs font-mono-code font-bold uppercase tracking-wider mt-1">
               <span>AUTHENTICATION REQUIRED</span>
             </div>
             <h1 className="font-display-title text-2xl font-bold text-white mt-1">
               MSAP Council Gate Console
             </h1>
-            <p className="text-xs text-[#94A3B8]">
+            <p className="text-xs text-[#9DB8CF]">
               Restricted Administrative Terminal for 53rd Freshers' Meet 2026. Only authorized council marshals may log in.
             </p>
           </div>
@@ -387,7 +387,7 @@ export const AdminPortal: React.FC = () => {
           {/* Login Form */}
           <form onSubmit={handleLogin} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-[#94A3B8] font-mono-code">ADMINISTRATOR EMAIL</label>
+              <label className="text-xs font-bold text-[#9DB8CF] font-mono-code">ADMINISTRATOR EMAIL</label>
               <div className="relative">
                 <input
                   type="email"
@@ -395,16 +395,16 @@ export const AdminPortal: React.FC = () => {
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
                   placeholder="admin@msap.org"
-                  className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#494454]/40 outline-none focus:border-[#7BD0FF] transition-colors"
+                  className="w-full bg-[#061A2E] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#164468] outline-none focus:border-[#38BDF8] transition-colors placeholder:text-[#9DB8CF]/50"
                 />
-                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#94A3B8] text-lg">
+                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#9DB8CF] text-lg">
                   badge
                 </span>
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-bold text-[#94A3B8] font-mono-code">PASSWORD</label>
+              <label className="text-xs font-bold text-[#9DB8CF] font-mono-code">PASSWORD</label>
               <div className="relative">
                 <input
                   type="password"
@@ -412,16 +412,16 @@ export const AdminPortal: React.FC = () => {
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#494454]/40 outline-none focus:border-[#7BD0FF] transition-colors"
+                  className="w-full bg-[#061A2E] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#164468] outline-none focus:border-[#38BDF8] transition-colors placeholder:text-[#9DB8CF]/50"
                 />
-                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#94A3B8] text-lg">
+                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#9DB8CF] text-lg">
                   lock
                 </span>
               </div>
             </div>
 
             {loginError && (
-              <div className="p-3 rounded-xl bg-[#F43F5E]/15 border border-[#F43F5E]/40 text-[#F43F5E] text-xs font-semibold">
+              <div className="p-3 rounded-xl bg-[#FB7185]/15 border border-[#FB7185]/40 text-[#FB7185] text-xs font-semibold">
                 {loginError}
               </div>
             )}
@@ -429,7 +429,7 @@ export const AdminPortal: React.FC = () => {
             <button
               type="submit"
               disabled={isLoggingIn}
-              className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#38BDF8] text-white font-bold text-sm shadow-[0_0_20px_rgba(139,92,246,0.4)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#0284C7] to-[#38BDF8] hover:from-[#38BDF8] hover:to-[#7DD3FC] text-[#061A2E] font-bold text-sm shadow-[0_0_20px_rgba(56,189,248,0.35)] hover:shadow-[0_0_30px_rgba(56,189,248,0.55)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-lg">
                 {isLoggingIn ? 'progress_activity' : 'login'}
@@ -439,8 +439,8 @@ export const AdminPortal: React.FC = () => {
           </form>
 
           {/* Credentials Helper */}
-          <div className="p-3 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-1 text-[11px] font-mono-code text-[#94A3B8]">
-            <span className="text-[#7BD0FF] font-bold">Default Council Credentials:</span>
+          <div className="p-3 rounded-xl bg-[#061A2E] border border-[#164468] flex flex-col gap-1 text-[11px] font-mono-code text-[#9DB8CF]">
+            <span className="text-[#38BDF8] font-bold">Default Council Credentials:</span>
             <span>Email: <strong className="text-white">admin@msap.org</strong></span>
             <span>Password: <strong className="text-white">ChangeMe@MSAP2026</strong></span>
           </div>
@@ -448,7 +448,7 @@ export const AdminPortal: React.FC = () => {
           <div className="text-center">
             <a
               href="/"
-              className="text-xs text-[#94A3B8] hover:text-[#7BD0FF] transition-colors underline"
+              className="text-xs text-[#9DB8CF] hover:text-[#38BDF8] transition-colors underline"
             >
               Return to Public Ticket Portal
             </a>
@@ -462,22 +462,22 @@ export const AdminPortal: React.FC = () => {
   // AUTHENTICATED STATE: FULL ADMIN DASHBOARD & SCANNER
   // ----------------------------------------------------
   return (
-    <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1]">
+    <div className="min-h-screen bg-[#061A2E] text-[#EAF6FF]">
       {/* Top Admin Navigation Header */}
-      <header className="sticky top-0 z-40 bg-[#0B0F19]/95 backdrop-blur-md border-b border-[#262A35]">
+      <header className="sticky top-0 z-40 bg-[#061A2E]/95 backdrop-blur-md border-b border-[#164468]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#38BDF8] flex items-center justify-center text-white font-bold text-xs shadow-md">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#0284C7] to-[#38BDF8] flex items-center justify-center text-[#061A2E] font-bold text-xs shadow-md">
               MSAP
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <span className="font-display-title font-bold text-white text-base">Admin Operations</span>
-                <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#10B981] text-[10px] font-mono-code font-bold border border-[#10B981]/30">
+                <span className="px-2 py-0.5 rounded bg-[#34D399]/15 text-[#34D399] text-[10px] font-mono-code font-bold border border-[#34D399]/30">
                   MYSQL LIVE
                 </span>
               </div>
-              <span className="text-[11px] text-[#94A3B8]">53rd Freshers' Meet 2026 • Gate Operations</span>
+              <span className="text-[11px] text-[#9DB8CF]">53rd Freshers' Meet 2026 • Gate Operations</span>
             </div>
           </div>
 
@@ -485,11 +485,11 @@ export const AdminPortal: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-xs font-semibold text-white">{adminUser.email}</span>
-              <span className="text-[10px] font-mono-code text-[#7BD0FF] uppercase">{adminUser.role} ACCESS</span>
+              <span className="text-[10px] font-mono-code text-[#38BDF8] uppercase">{adminUser.role} ACCESS</span>
             </div>
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171B26] hover:bg-[#262A35] text-[#F43F5E] text-xs font-semibold border border-[#F43F5E]/30 transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C2C4A] hover:bg-[#103A5F] text-[#FB7185] text-xs font-semibold border border-[#FB7185]/30 transition-colors cursor-pointer"
             >
               <span className="material-symbols-outlined text-sm">logout</span>
               <span className="hidden sm:inline">Sign Out</span>
@@ -498,13 +498,13 @@ export const AdminPortal: React.FC = () => {
         </div>
 
         {/* Tab Selector Bar */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-[#262A35]/60 flex items-center gap-2 overflow-x-auto py-2">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-[#164468]/60 flex items-center gap-2 overflow-x-auto py-2">
           <button
             onClick={() => { setActiveTab('dashboard'); fetchDashboardStats(); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'dashboard'
-                ? 'bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white shadow-md'
-                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+                ? 'bg-gradient-to-r from-[#0284C7] to-[#38BDF8] text-[#061A2E] shadow-md font-bold'
+                : 'text-[#9DB8CF] hover:text-white hover:bg-[#0C2C4A]'
             }`}
           >
             <span className="material-symbols-outlined text-base">analytics</span>
@@ -515,8 +515,8 @@ export const AdminPortal: React.FC = () => {
             onClick={() => { setActiveTab('attendees'); fetchAttendeesList(); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'attendees'
-                ? 'bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white shadow-md'
-                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+                ? 'bg-gradient-to-r from-[#0284C7] to-[#38BDF8] text-[#061A2E] shadow-md font-bold'
+                : 'text-[#9DB8CF] hover:text-white hover:bg-[#0C2C4A]'
             }`}
           >
             <span className="material-symbols-outlined text-base">group</span>
@@ -527,8 +527,8 @@ export const AdminPortal: React.FC = () => {
             onClick={() => { setActiveTab('scanner'); stopCamera(); }}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
               activeTab === 'scanner'
-                ? 'bg-gradient-to-r from-[#0EA5E9] to-[#38BDF8] text-[#0B0F19] shadow-md'
-                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+                ? 'bg-gradient-to-r from-[#0284C7] to-[#38BDF8] text-[#061A2E] shadow-md font-bold'
+                : 'text-[#9DB8CF] hover:text-white hover:bg-[#0C2C4A]'
             }`}
           >
             <span className="material-symbols-outlined text-base">qr_code_scanner</span>
@@ -545,12 +545,12 @@ export const AdminPortal: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-display-title font-bold text-white">Event Operational Metrics</h2>
-                <p className="text-xs text-[#94A3B8]">Real-time telemetry directly queried from MySQL database</p>
+                <p className="text-xs text-[#9DB8CF]">Real-time telemetry directly queried from MySQL database</p>
               </div>
               <button
                 onClick={() => fetchDashboardStats()}
                 disabled={statsLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171B26] hover:bg-[#262A35] text-[#7BD0FF] text-xs font-semibold border border-[#262A35] cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0C2C4A] hover:bg-[#103A5F] text-[#38BDF8] text-xs font-semibold border border-[#164468] cursor-pointer transition-colors"
               >
                 <span className={`material-symbols-outlined text-sm ${statsLoading ? 'animate-spin' : ''}`}>
                   refresh
@@ -562,66 +562,66 @@ export const AdminPortal: React.FC = () => {
             {/* 7 Core Required Metric Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {/* TOTAL REGISTERED */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-[#94A3B8] uppercase font-bold">TOTAL REGISTERED</span>
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#164468] flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#9DB8CF] uppercase font-bold">TOTAL REGISTERED</span>
                 <span className="text-3xl font-bold font-display-title text-white">
                   {stats?.total_registered ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#7BD0FF]">All candidates in registry</span>
+                <span className="text-[10px] text-[#38BDF8]">All candidates in registry</span>
               </div>
 
               {/* TOTAL PAID */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#10B981]/30 flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-[#10B981] uppercase font-bold">TOTAL PAID</span>
-                <span className="text-3xl font-bold font-display-title text-[#10B981]">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#34D399]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#34D399] uppercase font-bold">TOTAL PAID</span>
+                <span className="text-3xl font-bold font-display-title text-[#34D399]">
                   {(stats?.successful_payments ?? (stats as unknown as Record<string, number>)?.total_paid) ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Confirmed UPI payments</span>
+                <span className="text-[10px] text-[#9DB8CF]">Confirmed UPI payments</span>
               </div>
 
               {/* PAYMENT PENDING */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-amber-500/30 flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-amber-300 uppercase font-bold">PAYMENT PENDING</span>
-                <span className="text-3xl font-bold font-display-title text-amber-300">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#FDBA74]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#FDBA74] uppercase font-bold">PAYMENT PENDING</span>
+                <span className="text-3xl font-bold font-display-title text-[#FDBA74]">
                   {(stats?.pending_payments ?? (stats as unknown as Record<string, number>)?.payment_pending) ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Awaiting council confirmation</span>
+                <span className="text-[10px] text-[#9DB8CF]">Awaiting council confirmation</span>
               </div>
 
               {/* TOTAL CHECKED IN */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#38BDF8]/30 flex flex-col gap-1">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#38BDF8]/30 flex flex-col gap-1">
                 <span className="text-[11px] font-mono-code text-[#38BDF8] uppercase font-bold">TOTAL CHECKED IN</span>
                 <span className="text-3xl font-bold font-display-title text-[#38BDF8]">
                   {stats?.total_checked_in ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Admitted past venue gate</span>
+                <span className="text-[10px] text-[#9DB8CF]">Admitted past venue gate</span>
               </div>
 
               {/* NOT CHECKED IN */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-[#94A3B8] uppercase font-bold">NOT CHECKED IN</span>
-                <span className="text-3xl font-bold font-display-title text-[#DFE2F1]">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#164468] flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#9DB8CF] uppercase font-bold">NOT CHECKED IN</span>
+                <span className="text-3xl font-bold font-display-title text-[#EAF6FF]">
                   {stats?.not_checked_in ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Yet to arrive at gate</span>
+                <span className="text-[10px] text-[#9DB8CF]">Yet to arrive at gate</span>
               </div>
 
               {/* TOTAL FRESHERS */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#F43F5E]/30 flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-[#F43F5E] uppercase font-bold">TOTAL FRESHERS</span>
-                <span className="text-3xl font-bold font-display-title text-[#F43F5E]">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#FDBA74]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#FDBA74] uppercase font-bold">TOTAL FRESHERS</span>
+                <span className="text-3xl font-bold font-display-title text-[#FDBA74]">
                   {stats?.total_freshers ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Class of 2026</span>
+                <span className="text-[10px] text-[#9DB8CF]">Class of 2026</span>
               </div>
 
               {/* TOTAL SENIORS */}
-              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#A078FF]/30 flex flex-col gap-1">
-                <span className="text-[11px] font-mono-code text-[#A078FF] uppercase font-bold">TOTAL SENIORS</span>
-                <span className="text-3xl font-bold font-display-title text-[#A078FF]">
+              <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#38BDF8]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#38BDF8] uppercase font-bold">TOTAL SENIORS</span>
+                <span className="text-3xl font-bold font-display-title text-[#38BDF8]">
                   {stats?.total_seniors ?? '...'}
                 </span>
-                <span className="text-[10px] text-[#94A3B8]">Senior hosts & council</span>
+                <span className="text-[10px] text-[#9DB8CF]">Senior hosts & council</span>
               </div>
             </div>
 
@@ -629,15 +629,15 @@ export const AdminPortal: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
               <div
                 onClick={() => { setPaymentFilter('PENDING'); setActiveTab('attendees'); }}
-                className="p-5 rounded-2xl bg-[#171B26] hover:bg-[#262A35] border border-[#262A35] transition-all cursor-pointer flex items-center justify-between"
+                className="p-5 rounded-2xl bg-[#0C2C4A] hover:bg-[#103A5F] border border-[#164468] transition-all cursor-pointer flex items-center justify-between"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#FDBA74]/15 text-[#FDBA74] flex items-center justify-center">
                     <span className="material-symbols-outlined text-2xl">receipt_long</span>
                   </div>
                   <div>
                     <h3 className="font-bold text-white text-sm">Review Pending Payments</h3>
-                    <p className="text-xs text-[#94A3B8]">Verify UTR bank receipts and activate digital passes</p>
+                    <p className="text-xs text-[#9DB8CF]">Verify UTR bank receipts and activate digital passes</p>
                   </div>
                 </div>
                 <span className="material-symbols-outlined text-white">chevron_right</span>
@@ -645,15 +645,15 @@ export const AdminPortal: React.FC = () => {
 
               <div
                 onClick={() => setActiveTab('scanner')}
-                className="p-5 rounded-2xl bg-[#171B26] hover:bg-[#262A35] border border-[#262A35] transition-all cursor-pointer flex items-center justify-between"
+                className="p-5 rounded-2xl bg-[#0C2C4A] hover:bg-[#103A5F] border border-[#164468] transition-all cursor-pointer flex items-center justify-between"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-xl bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-xl bg-[#38BDF8]/15 text-[#38BDF8] flex items-center justify-center">
                     <span className="material-symbols-outlined text-2xl">qr_code_scanner</span>
                   </div>
                   <div>
                     <h3 className="font-bold text-white text-sm">Launch Gate QR Scanner</h3>
-                    <p className="text-xs text-[#94A3B8]">Fast admission turnstile with duplicate check protection</p>
+                    <p className="text-xs text-[#9DB8CF]">Fast admission turnstile with duplicate check protection</p>
                   </div>
                 </div>
                 <span className="material-symbols-outlined text-white">chevron_right</span>
@@ -668,20 +668,20 @@ export const AdminPortal: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-display-title font-bold text-white">Attendee Registry</h2>
-                <p className="text-xs text-[#94A3B8]">
+                <p className="text-xs text-[#9DB8CF]">
                   Showing {attendees.length} of {attendeesTotal} attendees registered in MySQL
                 </p>
               </div>
 
               {actionMessage && (
-                <div className="p-2 rounded-xl bg-[#171B26] border border-[#10B981]/40 text-xs font-mono-code text-[#10B981]">
+                <div className="p-2 rounded-xl bg-[#0C2C4A] border border-[#34D399]/40 text-xs font-mono-code text-[#34D399]">
                   {actionMessage}
                 </div>
               )}
             </div>
 
             {/* Filters and Search Bar */}
-            <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-wrap items-center gap-3">
+            <div className="p-4 rounded-2xl bg-[#0C2C4A] border border-[#164468] flex flex-wrap items-center gap-3">
               {/* Search */}
               <div className="relative flex-1 min-w-[200px]">
                 <input
@@ -689,9 +689,9 @@ export const AdminPortal: React.FC = () => {
                   placeholder="Search by Ticket ID, Name, Phone, Email..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-[#0A0E18] px-3.5 py-2 pl-9 rounded-xl text-xs text-white border border-[#494454]/30 outline-none focus:border-[#7BD0FF]"
+                  className="w-full bg-[#061A2E] px-3.5 py-2 pl-9 rounded-xl text-xs text-white border border-[#164468] outline-none focus:border-[#38BDF8] placeholder:text-[#9DB8CF]/50"
                 />
-                <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#94A3B8] text-base">
+                <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#9DB8CF] text-base">
                   search
                 </span>
               </div>
@@ -700,7 +700,7 @@ export const AdminPortal: React.FC = () => {
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+                className="bg-[#061A2E] px-3 py-2 rounded-xl text-xs text-[#EAF6FF] border border-[#164468] outline-none cursor-pointer"
               >
                 <option value="ALL">All Cohorts</option>
                 <option value="FRESHER">Fresher</option>
@@ -711,7 +711,7 @@ export const AdminPortal: React.FC = () => {
               <select
                 value={paymentFilter}
                 onChange={(e) => setPaymentFilter(e.target.value)}
-                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+                className="bg-[#061A2E] px-3 py-2 rounded-xl text-xs text-[#EAF6FF] border border-[#164468] outline-none cursor-pointer"
               >
                 <option value="ALL">All Payments</option>
                 <option value="PAID">Paid (Active Pass)</option>
@@ -726,7 +726,7 @@ export const AdminPortal: React.FC = () => {
               <select
                 value={checkInFilter}
                 onChange={(e) => setCheckInFilter(e.target.value)}
-                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+                className="bg-[#061A2E] px-3 py-2 rounded-xl text-xs text-[#EAF6FF] border border-[#164468] outline-none cursor-pointer"
               >
                 <option value="ALL">All Check-Ins</option>
                 <option value="CHECKED_IN">Checked In</option>
@@ -735,17 +735,17 @@ export const AdminPortal: React.FC = () => {
 
               <button
                 onClick={() => fetchAttendeesList()}
-                className="px-3 py-2 rounded-xl bg-[#262A35] hover:bg-[#353944] text-xs font-semibold text-white transition-colors cursor-pointer"
+                className="px-3 py-2 rounded-xl bg-[#0284C7] hover:bg-[#38BDF8] text-[#061A2E] text-xs font-bold transition-colors cursor-pointer"
               >
                 Apply
               </button>
             </div>
 
             {/* Attendee Table */}
-            <div className="rounded-2xl bg-[#171B26] border border-[#262A35] overflow-hidden shadow-xl">
+            <div className="rounded-2xl bg-[#0C2C4A] border border-[#164468] overflow-hidden shadow-xl">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
-                  <thead className="bg-[#0A0E18] text-[#94A3B8] font-mono-code text-[11px] uppercase border-b border-[#262A35]">
+                  <thead className="bg-[#061A2E] text-[#9DB8CF] font-mono-code text-[11px] uppercase border-b border-[#164468]">
                     <tr>
                       <th className="px-4 py-3">Ticket ID</th>
                       <th className="px-4 py-3">Candidate Name</th>
@@ -757,11 +757,11 @@ export const AdminPortal: React.FC = () => {
                       <th className="px-4 py-3 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-[#262A35]">
+                  <tbody className="divide-y divide-[#164468]">
                     {attendeesLoading ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8]">
-                          <span className="material-symbols-outlined animate-spin text-2xl text-[#8B5CF6]">
+                        <td colSpan={8} className="px-4 py-8 text-center text-[#9DB8CF]">
+                          <span className="material-symbols-outlined animate-spin text-2xl text-[#38BDF8]">
                             progress_activity
                           </span>
                           <p className="mt-1">Loading attendee records from MySQL...</p>
@@ -769,32 +769,32 @@ export const AdminPortal: React.FC = () => {
                       </tr>
                     ) : attendees.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8]">
+                        <td colSpan={8} className="px-4 py-8 text-center text-[#9DB8CF]">
                           No attendee records matching your filters.
                         </td>
                       </tr>
                     ) : (
                       attendees.map((a) => (
-                        <tr key={a.id} className="hover:bg-[#1C1F2A] transition-colors">
-                          <td className="px-4 py-3 font-mono-code font-bold text-[#7BD0FF] whitespace-nowrap">
-                            {a.ticket_id || <span className="text-amber-400 font-normal text-[11px]">PENDING PAYMENT</span>}
+                        <tr key={a.id} className="hover:bg-[#103A5F] transition-colors">
+                          <td className="px-4 py-3 font-mono-code font-bold text-[#38BDF8] whitespace-nowrap">
+                            {a.ticket_id || <span className="text-[#FDBA74] font-normal text-[11px]">PENDING PAYMENT</span>}
                           </td>
                           <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
                             {a.full_name}
                           </td>
-                          <td className="px-4 py-3 text-[#94A3B8] whitespace-nowrap">
+                          <td className="px-4 py-3 text-[#9DB8CF] whitespace-nowrap">
                             <div>{a.phone}</div>
-                            <div className="text-[10px] text-[#494454]">{a.email}</div>
+                            <div className="text-[10px] text-[#9DB8CF]/70">{a.email}</div>
                           </td>
-                          <td className="px-4 py-3 text-[#94A3B8] truncate max-w-[140px]">
+                          <td className="px-4 py-3 text-[#9DB8CF] truncate max-w-[140px]">
                             {a.college}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <span
                               className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold ${
                                 a.category === 'SENIOR'
-                                  ? 'bg-[#0EA5E9]/20 text-[#38BDF8] border border-[#0EA5E9]/40'
-                                  : 'bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/40'
+                                  ? 'bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/40'
+                                  : 'bg-[#FDBA74]/15 text-[#FDBA74] border border-[#FDBA74]/40'
                               }`}
                             >
                               {a.category}
@@ -804,11 +804,11 @@ export const AdminPortal: React.FC = () => {
                             <span
                               className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold flex items-center gap-1 w-max ${
                                 a.payment_status === 'PAID'
-                                  ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
-                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                                  ? 'bg-[#34D399]/15 text-[#34D399] border border-[#34D399]/40'
+                                  : 'bg-[#FDBA74]/15 text-[#FDBA74] border border-[#FDBA74]/40'
                               }`}
                             >
-                              <span className={`w-1.5 h-1.5 rounded-full ${a.payment_status === 'PAID' ? 'bg-[#10B981]' : 'bg-amber-400'}`}></span>
+                              <span className={`w-1.5 h-1.5 rounded-full ${a.payment_status === 'PAID' ? 'bg-[#34D399]' : 'bg-[#FDBA74]'}`}></span>
                               <span>{a.payment_status}</span>
                             </span>
                           </td>
@@ -816,8 +816,8 @@ export const AdminPortal: React.FC = () => {
                             <span
                               className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold ${
                                 a.check_in_status === 'CHECKED_IN'
-                                  ? 'bg-[#10B981]/20 text-[#10B981]'
-                                  : 'bg-[#262A35] text-[#94A3B8]'
+                                  ? 'bg-[#34D399]/15 text-[#34D399] border border-[#34D399]/30'
+                                  : 'bg-[#061A2E] text-[#9DB8CF] border border-[#164468]'
                               }`}
                             >
                               {a.check_in_status === 'CHECKED_IN' ? 'CHECKED IN' : 'NOT ARRIVED'}
@@ -826,7 +826,7 @@ export const AdminPortal: React.FC = () => {
                           <td className="px-4 py-3 text-right whitespace-nowrap">
                             <button
                               onClick={() => setSelectedAttendee(a)}
-                              className="px-2.5 py-1 rounded-lg bg-[#262A35] hover:bg-[#353944] text-[#7BD0FF] text-xs font-semibold cursor-pointer"
+                              className="px-2.5 py-1 rounded-lg bg-[#061A2E] hover:bg-[#103A5F] text-[#38BDF8] border border-[#164468] text-xs font-semibold cursor-pointer transition-colors"
                             >
                               View / Verify
                             </button>
@@ -841,16 +841,16 @@ export const AdminPortal: React.FC = () => {
 
             {/* Attendee Details & Payment Approval Modal */}
             {selectedAttendee && (
-              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-                <div className="bg-[#171B26] border border-[#262A35] rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
-                  <div className="flex items-center justify-between border-b border-[#262A35] pb-3">
+              <div className="fixed inset-0 z-50 bg-[#061A2E]/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-[#0C2C4A] border border-[#164468] rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-[#164468] pb-3">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono-code font-bold text-lg text-[#7BD0FF]">
+                      <span className="font-mono-code font-bold text-lg text-[#38BDF8]">
                         {selectedAttendee.ticket_id || 'PENDING (NO PASS)'}
                       </span>
                       <span
                         className={`px-2 py-0.5 rounded font-mono-code text-xs font-bold ${
-                          selectedAttendee.category === 'SENIOR' ? 'bg-sky-500/20 text-sky-400' : 'bg-rose-500/20 text-rose-400'
+                          selectedAttendee.category === 'SENIOR' ? 'bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30' : 'bg-[#FDBA74]/15 text-[#FDBA74] border border-[#FDBA74]/30'
                         }`}
                       >
                         {selectedAttendee.category}
@@ -858,7 +858,7 @@ export const AdminPortal: React.FC = () => {
                     </div>
                     <button
                       onClick={() => setSelectedAttendee(null)}
-                      className="text-[#94A3B8] hover:text-white cursor-pointer"
+                      className="text-[#9DB8CF] hover:text-white cursor-pointer"
                     >
                       <span className="material-symbols-outlined">close</span>
                     </button>
@@ -867,27 +867,27 @@ export const AdminPortal: React.FC = () => {
                   {/* Information Grid */}
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">FULL NAME</span>
+                      <span className="text-[#9DB8CF] font-mono-code">FULL NAME</span>
                       <span className="font-bold text-white text-sm">{selectedAttendee.full_name}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">PHONE</span>
+                      <span className="text-[#9DB8CF] font-mono-code">PHONE</span>
                       <span className="font-semibold text-white">{selectedAttendee.phone}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">EMAIL</span>
+                      <span className="text-[#9DB8CF] font-mono-code">EMAIL</span>
                       <span className="font-semibold text-white truncate">{selectedAttendee.email}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">COLLEGE / DEPT</span>
+                      <span className="text-[#9DB8CF] font-mono-code">COLLEGE / DEPT</span>
                       <span className="font-semibold text-white truncate">{selectedAttendee.college}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">STUDENT ROLL ID</span>
+                      <span className="text-[#9DB8CF] font-mono-code">STUDENT ROLL ID</span>
                       <span className="font-semibold text-white">{selectedAttendee.student_roll_id || 'N/A'}</span>
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[#94A3B8] font-mono-code">PAYMENT UTR</span>
+                      <span className="text-[#9DB8CF] font-mono-code">PAYMENT UTR</span>
                       <span className="font-mono-code font-bold text-[#38BDF8]">
                         {selectedAttendee.payment_utr || 'Direct Portal Intake'}
                       </span>
@@ -895,14 +895,14 @@ export const AdminPortal: React.FC = () => {
                   </div>
 
                   {/* Payment Approval Control */}
-                  <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2">
+                  <div className="p-4 rounded-xl bg-[#061A2E] border border-[#164468] flex flex-col gap-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono-code text-[#94A3B8]">PAYMENT STATUS</span>
+                      <span className="text-xs font-mono-code text-[#9DB8CF]">PAYMENT STATUS</span>
                       <span
                         className={`px-2.5 py-0.5 rounded font-mono-code text-xs font-bold ${
                           selectedAttendee.payment_status === 'PAID'
-                            ? 'bg-[#10B981]/20 text-[#10B981]'
-                            : 'bg-amber-500/20 text-amber-300'
+                            ? 'bg-[#34D399]/15 text-[#34D399] border border-[#34D399]/30'
+                            : 'bg-[#FDBA74]/15 text-[#FDBA74] border border-[#FDBA74]/30'
                         }`}
                       >
                         {selectedAttendee.payment_status}
@@ -911,7 +911,7 @@ export const AdminPortal: React.FC = () => {
 
                     {selectedAttendee.payment_status === 'PENDING' || selectedAttendee.payment_status === 'PROCESSING' ? (
                       <div className="flex flex-col gap-2 mt-2">
-                        <p className="text-xs text-amber-300/90 leading-relaxed">
+                        <p className="text-xs text-[#FDBA74] leading-relaxed">
                           ⚠️ Primary confirmation must occur via payment gateway webhook. Use the button below only as an <strong>Emergency Admin Override</strong> with a mandatory audit justification.
                         </p>
                         <button
@@ -926,30 +926,30 @@ export const AdminPortal: React.FC = () => {
                       <div className="flex flex-col gap-2 mt-1">
                         <div className="text-xs flex items-center gap-1.5">
                           {selectedAttendee.payment_confirmed_by?.includes('MANUAL_OVERRIDE') ? (
-                            <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-mono-code font-bold text-[11px] flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded bg-[#FDBA74]/15 text-[#FDBA74] font-mono-code font-bold text-[11px] flex items-center gap-1 border border-[#FDBA74]/30">
                               <span className="material-symbols-outlined text-xs">admin_panel_settings</span>
                               EMERGENCY MANUAL OVERRIDE (Audited)
                             </span>
                           ) : (
-                            <span className="px-2 py-0.5 rounded bg-[#10B981]/20 text-[#10B981] font-mono-code font-bold text-[11px] flex items-center gap-1">
+                            <span className="px-2 py-0.5 rounded bg-[#34D399]/15 text-[#34D399] font-mono-code font-bold text-[11px] flex items-center gap-1 border border-[#34D399]/30">
                               <span className="material-symbols-outlined text-xs">verified</span>
                               GATEWAY VERIFIED (Automated)
                             </span>
                           )}
                         </div>
-                        <p className="text-[11px] text-slate-400">
+                        <p className="text-[11px] text-[#9DB8CF]">
                           {selectedAttendee.payment_confirmed_by || 'Confirmed'} • Pass is active for gate scanning.
                         </p>
                         <button
                           onClick={() => handleRefundPayment(selectedAttendee.id)}
-                          className="w-full py-2 mt-1 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/40 text-rose-300 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                          className="w-full py-2 mt-1 rounded-xl bg-[#FB7185]/15 hover:bg-[#FB7185]/25 border border-[#FB7185]/40 text-[#FB7185] font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                         >
                           <span className="material-symbols-outlined text-sm">cancel</span>
                           <span>REFUND & REVOKE PASS</span>
                         </button>
                       </div>
                     ) : (
-                      <div className="text-xs text-rose-400 flex items-center gap-1.5 mt-1 font-mono-code font-bold">
+                      <div className="text-xs text-[#FB7185] flex items-center gap-1.5 mt-1 font-mono-code font-bold">
                         <span className="material-symbols-outlined text-sm">block</span>
                         <span>STATUS: {selectedAttendee.payment_status} — ENTRY PASS REVOKED</span>
                       </div>
@@ -957,9 +957,9 @@ export const AdminPortal: React.FC = () => {
                   </div>
 
                   {/* Check-In Status */}
-                  <div className="p-3 rounded-xl bg-[#0A0E18] border border-[#262A35] flex items-center justify-between text-xs font-mono-code">
-                    <span className="text-[#94A3B8]">CHECK-IN ADMITTANCE</span>
-                    <span className={selectedAttendee.check_in_status === 'CHECKED_IN' ? 'text-[#10B981] font-bold' : 'text-slate-400'}>
+                  <div className="p-3 rounded-xl bg-[#061A2E] border border-[#164468] flex items-center justify-between text-xs font-mono-code">
+                    <span className="text-[#9DB8CF]">CHECK-IN ADMITTANCE</span>
+                    <span className={selectedAttendee.check_in_status === 'CHECKED_IN' ? 'text-[#34D399] font-bold' : 'text-[#9DB8CF]'}>
                       {selectedAttendee.check_in_status === 'CHECKED_IN'
                         ? `CHECKED IN AT ${selectedAttendee.check_in_time || 'GATE'}`
                         : 'NOT YET ADMITTED'}
@@ -969,7 +969,7 @@ export const AdminPortal: React.FC = () => {
                   <div className="flex items-center justify-end gap-2 pt-2">
                     <button
                       onClick={() => setSelectedAttendee(null)}
-                      className="px-4 py-2 rounded-xl bg-[#262A35] hover:bg-[#353944] text-white text-xs font-semibold cursor-pointer"
+                      className="px-4 py-2 rounded-xl bg-[#103A5F] hover:bg-[#164468] text-white text-xs font-semibold cursor-pointer transition-colors"
                     >
                       Close
                     </button>
@@ -985,7 +985,7 @@ export const AdminPortal: React.FC = () => {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
             {/* Left: Camera / Scanner Feed (6 Cols) */}
             <div className="lg:col-span-6 flex flex-col gap-4">
-              <div className="p-5 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-4">
+              <div className="p-5 rounded-2xl bg-[#0C2C4A] border border-[#164468] flex flex-col gap-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[#38BDF8]">videocam</span>
@@ -996,14 +996,14 @@ export const AdminPortal: React.FC = () => {
                     {cameraActive ? (
                       <button
                         onClick={stopCamera}
-                        className="px-3 py-1 rounded-lg bg-[#F43F5E]/20 text-[#F43F5E] text-xs font-semibold border border-[#F43F5E]/30 cursor-pointer"
+                        className="px-3 py-1 rounded-lg bg-[#FB7185]/15 text-[#FB7185] text-xs font-semibold border border-[#FB7185]/30 cursor-pointer transition-colors"
                       >
                         Stop Camera
                       </button>
                     ) : (
                       <button
                         onClick={startCamera}
-                        className="px-3 py-1 rounded-lg bg-[#10B981]/20 text-[#10B981] text-xs font-semibold border border-[#10B981]/30 cursor-pointer"
+                        className="px-3 py-1 rounded-lg bg-[#34D399]/15 text-[#34D399] text-xs font-semibold border border-[#34D399]/30 cursor-pointer transition-colors"
                       >
                         Start Camera
                       </button>
@@ -1012,7 +1012,7 @@ export const AdminPortal: React.FC = () => {
                 </div>
 
                 {/* Video Viewport / Viewfinder */}
-                <div className="relative aspect-video w-full rounded-xl bg-[#0A0E18] border-2 border-dashed border-[#262A35] flex items-center justify-center overflow-hidden">
+                <div className="relative aspect-video w-full rounded-xl bg-[#061A2E] border-2 border-dashed border-[#164468] flex items-center justify-center overflow-hidden">
                   {cameraActive ? (
                     <>
                       <video
@@ -1030,10 +1030,10 @@ export const AdminPortal: React.FC = () => {
                     </>
                   ) : (
                     <div className="flex flex-col items-center gap-2 text-center p-4">
-                      <span className="material-symbols-outlined text-4xl text-[#94A3B8]">
+                      <span className="material-symbols-outlined text-4xl text-[#9DB8CF]">
                         qr_code_scanner
                       </span>
-                      <p className="text-xs text-[#94A3B8]">
+                      <p className="text-xs text-[#9DB8CF]">
                         Click "Start Camera" to scan passes with your webcam / phone, or use the manual token entry below.
                       </p>
                     </div>
@@ -1041,14 +1041,14 @@ export const AdminPortal: React.FC = () => {
                 </div>
 
                 {cameraError && (
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+                  <div className="p-2.5 rounded-xl bg-[#FDBA74]/15 border border-[#FDBA74]/30 text-[#FDBA74] text-xs">
                     {cameraError}
                   </div>
                 )}
 
                 {/* Manual Barcode / QR Token Entry Input */}
-                <div className="flex flex-col gap-1.5 pt-2 border-t border-[#262A35]">
-                  <label className="text-xs font-mono-code font-bold text-[#94A3B8]">
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-[#164468]">
+                  <label className="text-xs font-mono-code font-bold text-[#9DB8CF]">
                     MANUAL QR TOKEN / BARCODE SCANNER INPUT
                   </label>
                   <div className="flex items-center gap-2">
@@ -1058,17 +1058,17 @@ export const AdminPortal: React.FC = () => {
                       value={scannerTokenInput}
                       onChange={(e) => setScannerTokenInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleVerifyQr(scannerTokenInput)}
-                      className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-xs font-mono-code text-white border border-[#494454]/30 outline-none focus:border-[#38BDF8]"
+                      className="w-full bg-[#061A2E] px-3.5 py-2.5 rounded-xl text-xs font-mono-code text-white border border-[#164468] outline-none focus:border-[#38BDF8] placeholder:text-[#9DB8CF]/50"
                     />
                     <button
                       onClick={() => handleVerifyQr(scannerTokenInput)}
                       disabled={scanLoading || !scannerTokenInput.trim()}
-                      className="px-4 py-2.5 rounded-xl bg-[#38BDF8] hover:bg-[#7BD0FF] text-[#0B0F19] font-bold text-xs shrink-0 cursor-pointer disabled:opacity-50"
+                      className="px-4 py-2.5 rounded-xl bg-[#38BDF8] hover:bg-[#7DD3FC] text-[#061A2E] font-bold text-xs shrink-0 cursor-pointer disabled:opacity-50 transition-colors"
                     >
                       {scanLoading ? 'Checking...' : 'Verify'}
                     </button>
                   </div>
-                  <span className="text-[10px] text-[#94A3B8]">
+                  <span className="text-[10px] text-[#9DB8CF]">
                     Supports handheld USB barcode scanners and copy-pasted QR tokens.
                   </span>
                 </div>
@@ -1078,38 +1078,38 @@ export const AdminPortal: React.FC = () => {
             {/* Right: Verification & Admittance Decision Panel (6 Cols) */}
             <div className="lg:col-span-6 flex flex-col gap-4">
               {checkInSuccessMsg && (
-                <div className="p-4 rounded-2xl bg-[#10B981]/20 border border-[#10B981] text-[#10B981] font-bold text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2">
+                <div className="p-4 rounded-2xl bg-[#34D399]/15 border border-[#34D399] text-[#34D399] font-bold text-sm shadow-[0_0_20px_rgba(52,211,153,0.3)] flex items-center gap-2">
                   <span className="material-symbols-outlined text-2xl">celebration</span>
                   <span>{checkInSuccessMsg}</span>
                 </div>
               )}
 
               {scanResult ? (
-                <div className="p-6 rounded-2xl bg-[#171B26] border border-[#262A35] shadow-xl flex flex-col gap-5">
+                <div className="p-6 rounded-2xl bg-[#0C2C4A] border border-[#164468] shadow-xl flex flex-col gap-5">
                   {/* CASE 1: VALID TICKET */}
                   {scanResult.status === 'VALID' && scanResult.attendee && (
                     <>
-                      <div className="p-3.5 rounded-xl bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] flex items-center justify-between">
+                      <div className="p-3.5 rounded-xl bg-[#34D399]/15 border border-[#34D399]/50 text-[#34D399] flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span className="material-symbols-outlined text-2xl">check_circle</span>
                           <span className="font-bold text-sm font-mono-code">✅ VALID TICKET • READY FOR ENTRY</span>
                         </div>
-                        <span className="px-2 py-0.5 rounded bg-[#10B981] text-[#0B0F19] font-bold text-[10px]">
+                        <span className="px-2 py-0.5 rounded bg-[#34D399] text-[#061A2E] font-bold text-[10px]">
                           PAID
                         </span>
                       </div>
 
                       {/* Candidate Identity Card */}
-                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2.5">
+                      <div className="p-4 rounded-xl bg-[#061A2E] border border-[#164468] flex flex-col gap-2.5">
                         <div className="flex items-center justify-between">
-                          <span className="font-mono-code text-xl font-bold text-[#7BD0FF]">
+                          <span className="font-mono-code text-xl font-bold text-[#38BDF8]">
                             {scanResult.attendee.ticket_id}
                           </span>
                           <span
                             className={`px-2.5 py-0.5 rounded font-mono-code text-xs font-bold ${
                               scanResult.attendee.category === 'SENIOR'
-                                ? 'bg-sky-500/20 text-sky-300'
-                                : 'bg-rose-500/20 text-rose-300'
+                                ? 'bg-[#38BDF8]/15 text-[#38BDF8] border border-[#38BDF8]/30'
+                                : 'bg-[#FDBA74]/15 text-[#FDBA74] border border-[#FDBA74]/30'
                             }`}
                           >
                             {scanResult.attendee.category}
@@ -1120,7 +1120,7 @@ export const AdminPortal: React.FC = () => {
                           {scanResult.attendee.full_name}
                         </div>
 
-                        <div className="text-xs text-[#94A3B8] grid grid-cols-2 gap-2 pt-1 border-t border-[#262A35]">
+                        <div className="text-xs text-[#9DB8CF] grid grid-cols-2 gap-2 pt-1 border-t border-[#164468]">
                           <div>College: <span className="text-white">{scanResult.attendee.college}</span></div>
                           <div>Phone: <span className="text-white">{scanResult.attendee.phone}</span></div>
                         </div>
@@ -1130,7 +1130,7 @@ export const AdminPortal: React.FC = () => {
                       <button
                         onClick={() => handleConfirmEntry(scanResult.attendee!.id)}
                         disabled={checkInLoading}
-                        className="w-full py-4 rounded-xl bg-gradient-to-r from-[#10B981] via-[#059669] to-[#047857] text-white font-bold text-base shadow-[0_0_24px_rgba(16,185,129,0.45)] hover:shadow-[0_0_32px_rgba(16,185,129,0.65)] hover:scale-[1.01] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="w-full py-4 rounded-xl bg-gradient-to-r from-[#0284C7] via-[#059669] to-[#34D399] text-[#061A2E] font-bold text-base shadow-[0_0_24px_rgba(52,211,153,0.35)] hover:shadow-[0_0_32px_rgba(52,211,153,0.55)] hover:scale-[1.01] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <span className="material-symbols-outlined text-2xl">door_front</span>
                         <span>{checkInLoading ? 'Recording Transaction in MySQL...' : 'CONFIRM ENTRY (ADMIT ATTENDEE)'}</span>
@@ -1141,7 +1141,7 @@ export const AdminPortal: React.FC = () => {
                   {/* CASE 2: ALREADY CHECKED IN (ANTI-PASSBACK) */}
                   {scanResult.status === 'ALREADY_CHECKED_IN' && scanResult.attendee && (
                     <div className="flex flex-col gap-4">
-                      <div className="p-3.5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E]/50 text-[#F43F5E] flex items-center gap-2">
+                      <div className="p-3.5 rounded-xl bg-[#FB7185]/15 border border-[#FB7185]/50 text-[#FB7185] flex items-center gap-2">
                         <span className="material-symbols-outlined text-2xl">warning</span>
                         <div className="flex flex-col">
                           <span className="font-bold text-sm font-mono-code">⚠️ ALREADY CHECKED IN (ENTRY REJECTED)</span>
@@ -1151,9 +1151,9 @@ export const AdminPortal: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2 text-xs">
+                      <div className="p-4 rounded-xl bg-[#061A2E] border border-[#164468] flex flex-col gap-2 text-xs">
                         <div>Attendee: <strong className="text-white text-sm">{scanResult.attendee.full_name}</strong></div>
-                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id}</strong></div>
+                        <div>Ticket ID: <strong className="text-[#38BDF8] font-mono-code">{scanResult.attendee.ticket_id}</strong></div>
                         <div>Category: <strong className="text-white">{scanResult.attendee.category}</strong></div>
                       </div>
                     </div>
@@ -1162,7 +1162,7 @@ export const AdminPortal: React.FC = () => {
                   {/* CASE 3: PAYMENT NOT CONFIRMED */}
                   {scanResult.status === 'PAYMENT_NOT_CONFIRMED' && scanResult.attendee && (
                     <div className="flex flex-col gap-4">
-                      <div className="p-3.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 flex items-center gap-2">
+                      <div className="p-3.5 rounded-xl bg-[#FDBA74]/15 border border-[#FDBA74]/50 text-[#FDBA74] flex items-center gap-2">
                         <span className="material-symbols-outlined text-2xl">hourglass_top</span>
                         <div className="flex flex-col">
                           <span className="font-bold text-sm font-mono-code">⚠️ PAYMENT NOT CONFIRMED</span>
@@ -1172,9 +1172,9 @@ export const AdminPortal: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2 text-xs">
+                      <div className="p-4 rounded-xl bg-[#061A2E] border border-[#164468] flex flex-col gap-2 text-xs">
                         <div>Attendee: <strong className="text-white text-sm">{scanResult.attendee.full_name}</strong></div>
-                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id || 'PENDING (NO PASS)'}</strong></div>
+                        <div>Ticket ID: <strong className="text-[#38BDF8] font-mono-code">{scanResult.attendee.ticket_id || 'PENDING (NO PASS)'}</strong></div>
                       </div>
 
                       <button
@@ -1182,7 +1182,7 @@ export const AdminPortal: React.FC = () => {
                           await handleConfirmPayment(scanResult.attendee!.id);
                           await handleVerifyQr(scannerTokenInput);
                         }}
-                        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#0B0F19] font-bold text-xs cursor-pointer shadow-md transition-all"
+                        className="w-full py-3 rounded-xl bg-[#FDBA74] hover:bg-[#FDBA74]/90 text-[#061A2E] font-bold text-xs cursor-pointer shadow-md transition-all"
                       >
                         Confirm Payment Now & Issue Entry Pass
                       </button>
@@ -1191,7 +1191,7 @@ export const AdminPortal: React.FC = () => {
 
                   {/* CASE 4: ENTRY PASS REVOKED */}
                   {scanResult.status === 'ENTRY_PASS_REVOKED' && (
-                    <div className="p-5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E] text-[#F43F5E] flex items-center gap-3">
+                    <div className="p-5 rounded-xl bg-[#FB7185]/15 border border-[#FB7185] text-[#FB7185] flex items-center gap-3">
                       <span className="material-symbols-outlined text-3xl">block</span>
                       <div className="flex flex-col">
                         <span className="font-bold text-base font-mono-code">⛔ ENTRY PASS REVOKED</span>
@@ -1202,9 +1202,9 @@ export const AdminPortal: React.FC = () => {
                     </div>
                   )}
 
-                  {/* CASE 4: INVALID TICKET */}
+                  {/* CASE 5: INVALID TICKET */}
                   {scanResult.status === 'INVALID' && (
-                    <div className="p-5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E] text-[#F43F5E] flex items-center gap-3">
+                    <div className="p-5 rounded-xl bg-[#FB7185]/15 border border-[#FB7185] text-[#FB7185] flex items-center gap-3">
                       <span className="material-symbols-outlined text-3xl">cancel</span>
                       <div className="flex flex-col">
                         <span className="font-bold text-base font-mono-code">❌ INVALID TICKET</span>
@@ -1216,12 +1216,12 @@ export const AdminPortal: React.FC = () => {
                   )}
                 </div>
               ) : (
-                <div className="p-8 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col items-center justify-center text-center gap-2 min-h-[260px]">
-                  <span className="material-symbols-outlined text-4xl text-[#94A3B8]">
+                <div className="p-8 rounded-2xl bg-[#0C2C4A] border border-[#164468] flex flex-col items-center justify-center text-center gap-2 min-h-[260px]">
+                  <span className="material-symbols-outlined text-4xl text-[#9DB8CF]">
                     fingerprint
                   </span>
                   <h4 className="font-bold text-white text-sm">Awaiting Pass Scan</h4>
-                  <p className="text-xs text-[#94A3B8] max-w-xs">
+                  <p className="text-xs text-[#9DB8CF] max-w-xs">
                     Scan student QR token or input manual ID on the left to verify admission rights and gate check-in status.
                   </p>
                 </div>
