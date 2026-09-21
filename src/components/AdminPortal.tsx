@@ -1,0 +1,1141 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Attendee, DashboardStats, VerifyQrResponse, AdminUser } from '../types';
+
+export const AdminPortal: React.FC = () => {
+  // Authentication State
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('msap_admin_token'));
+  const [adminUser, setAdminUser] = useState<AdminUser | null>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+
+  // Login Form State
+  const [loginEmail, setLoginEmail] = useState('admin@msap.org');
+  const [loginPassword, setLoginPassword] = useState('ChangeMe@MSAP2026');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+
+  // Navigation State
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'attendees' | 'scanner'>('dashboard');
+
+  // Dashboard Stats State
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState<boolean>(false);
+
+  // Attendees State
+  const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [attendeesTotal, setAttendeesTotal] = useState<number>(0);
+  const [attendeesLoading, setAttendeesLoading] = useState<boolean>(false);
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('ALL');
+  const [paymentFilter, setPaymentFilter] = useState<string>('ALL');
+  const [checkInFilter, setCheckInFilter] = useState<string>('ALL');
+  const [selectedAttendee, setSelectedAttendee] = useState<Attendee | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // QR Scanner State
+  const [scannerTokenInput, setScannerTokenInput] = useState<string>('');
+  const [scanResult, setScanResult] = useState<VerifyQrResponse | null>(null);
+  const [scanLoading, setScanLoading] = useState<boolean>(false);
+  const [checkInLoading, setCheckInLoading] = useState<boolean>(false);
+  const [checkInSuccessMsg, setCheckInSuccessMsg] = useState<string | null>(null);
+  const [cameraActive, setCameraActive] = useState<boolean>(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // ----------------------------------------------------
+  // Auth Verification on Mount
+  // ----------------------------------------------------
+  useEffect(() => {
+    if (token) {
+      verifyToken(token);
+    } else {
+      setAuthLoading(false);
+    }
+  }, [token]);
+
+  const verifyToken = async (jwtToken: string) => {
+    try {
+      setAuthLoading(true);
+      const res = await fetch('/api/admin/me', {
+        headers: { Authorization: `Bearer ${jwtToken}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAdminUser(data.admin);
+        fetchDashboardStats(jwtToken);
+      } else {
+        // Expired or invalid token
+        handleLogout();
+      }
+    } catch {
+      handleLogout();
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    setIsLoggingIn(true);
+
+    try {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: loginEmail.trim(), password: loginPassword }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.token) {
+        localStorage.setItem('msap_admin_token', data.token);
+        setToken(data.token);
+        setAdminUser(data.admin);
+        fetchDashboardStats(data.token);
+      } else {
+        setLoginError(data.error || 'Authentication failed.');
+      }
+    } catch {
+      setLoginError('Could not reach backend authentication service.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('msap_admin_token');
+    setToken(null);
+    setAdminUser(null);
+    stopCamera();
+  };
+
+  // ----------------------------------------------------
+  // Dashboard Metrics
+  // ----------------------------------------------------
+  const fetchDashboardStats = async (jwt = token) => {
+    if (!jwt) return;
+    setStatsLoading(true);
+    try {
+      const res = await fetch('/api/admin/dashboard', {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setStats(data.stats);
+      }
+    } catch (err) {
+      console.error('Stats fetch error:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  // ----------------------------------------------------
+  // Attendee Management
+  // ----------------------------------------------------
+  const fetchAttendeesList = async (jwt = token) => {
+    if (!jwt) return;
+    setAttendeesLoading(true);
+    try {
+      const queryParams = new URLSearchParams();
+      if (searchTerm) queryParams.set('search', searchTerm);
+      if (categoryFilter !== 'ALL') queryParams.set('category', categoryFilter);
+      if (paymentFilter !== 'ALL') queryParams.set('payment_status', paymentFilter);
+      if (checkInFilter !== 'ALL') queryParams.set('check_in_status', checkInFilter);
+      queryParams.set('limit', '200');
+
+      const res = await fetch(`/api/admin/attendees?${queryParams.toString()}`, {
+        headers: { Authorization: `Bearer ${jwt}` },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setAttendees(data.attendees || []);
+        setAttendeesTotal(data.total || 0);
+      }
+    } catch (err) {
+      console.error('Attendees fetch error:', err);
+    } finally {
+      setAttendeesLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (token && activeTab === 'attendees') {
+      fetchAttendeesList();
+    }
+  }, [token, activeTab, searchTerm, categoryFilter, paymentFilter, checkInFilter]);
+
+  // Confirm Payment
+  const handleConfirmPayment = async (attendeeId: number) => {
+    if (!token) return;
+    setActionMessage(null);
+    try {
+      const res = await fetch(`/api/admin/attendees/${attendeeId}/confirm-payment`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage(`✅ ${data.message}`);
+        // Refresh local attendee in modal and list
+        setSelectedAttendee((prev) => (prev ? { ...prev, payment_status: 'PAID' } : null));
+        fetchAttendeesList();
+        fetchDashboardStats();
+      } else {
+        setActionMessage(`❌ ${data.error || 'Failed to confirm payment.'}`);
+      }
+    } catch {
+      setActionMessage('❌ Network error confirming payment.');
+    }
+  };
+
+  // ----------------------------------------------------
+  // QR Scanner & Verification
+  // ----------------------------------------------------
+  const handleVerifyQr = async (qrTokenToVerify: string) => {
+    if (!token || !qrTokenToVerify.trim()) return;
+    setScanLoading(true);
+    setScanResult(null);
+    setCheckInSuccessMsg(null);
+
+    try {
+      const res = await fetch('/api/admin/verify-qr', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ qr_token: qrTokenToVerify.trim() }),
+      });
+      const data = await res.json();
+      setScanResult(data);
+    } catch {
+      setScanResult({
+        status: 'INVALID',
+        message: 'Network verification failure. Check server connectivity.',
+      });
+    } finally {
+      setScanLoading(false);
+    }
+  };
+
+  // Confirm Entry Admittance
+  const handleConfirmEntry = async (attendeeId: number) => {
+    if (!token) return;
+    setCheckInLoading(true);
+    try {
+      const res = await fetch('/api/admin/check-in', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ attendee_id: attendeeId }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setCheckInSuccessMsg(`🎉 ENTRY ADMITTED: ${data.attendee.full_name} (${data.attendee.ticket_id})!`);
+        // Update current scanResult
+        if (scanResult && scanResult.attendee) {
+          setScanResult({
+            ...scanResult,
+            status: 'ALREADY_CHECKED_IN',
+            message: 'Attendee successfully checked in.',
+            attendee: {
+              ...scanResult.attendee,
+              check_in_status: 'CHECKED_IN',
+              check_in_time: data.attendee.check_in_time,
+            },
+          });
+        }
+        fetchDashboardStats();
+      } else {
+        alert(data.error || 'Check-in transaction rejected.');
+      }
+    } catch {
+      alert('Check-in communication error.');
+    } finally {
+      setCheckInLoading(false);
+    }
+  };
+
+  // Camera Management
+  const startCamera = async () => {
+    setCameraError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+      setCameraActive(true);
+    } catch (err: unknown) {
+      console.warn('Camera error:', err);
+      setCameraError('Camera access unavailable. Use manual QR token or barcode input below.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  // ----------------------------------------------------
+  // UN-AUTHENTICATED STATE: ACCESS DENIED LOGIN SCREEN
+  // ----------------------------------------------------
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <span className="material-symbols-outlined text-[#8B5CF6] text-4xl animate-spin">progress_activity</span>
+          <span className="font-mono-code text-sm text-[#94A3B8]">Validating Administrative Session...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!token || !adminUser) {
+    return (
+      <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1] flex items-center justify-center p-4">
+        <div className="relative w-full max-w-md bg-[#171B26] border border-[#262A35] rounded-2xl shadow-2xl p-6 sm:p-8 flex flex-col gap-6 overflow-hidden">
+          {/* Subtle Accent Glow */}
+          <div className="absolute -top-20 -right-20 w-48 h-48 rounded-full bg-[#8B5CF6]/20 blur-3xl pointer-events-none"></div>
+
+          {/* Access Denied Header */}
+          <div className="flex flex-col items-center text-center gap-2">
+            <div className="w-14 h-14 rounded-2xl bg-[#FF516A]/15 border border-[#F43F5E]/30 flex items-center justify-center text-[#F43F5E] shadow-[0_0_20px_rgba(244,63,94,0.3)]">
+              <span className="material-symbols-outlined text-3xl">shield</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-[#FF516A]/10 text-[#F43F5E] text-xs font-mono-code font-bold uppercase tracking-wider mt-1">
+              <span>AUTHENTICATION REQUIRED</span>
+            </div>
+            <h1 className="font-display-title text-2xl font-bold text-white mt-1">
+              MSAP Council Gate Console
+            </h1>
+            <p className="text-xs text-[#94A3B8]">
+              Restricted Administrative Terminal for 53rd Freshers' Meet 2026. Only authorized council marshals may log in.
+            </p>
+          </div>
+
+          {/* Login Form */}
+          <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#94A3B8] font-mono-code">ADMINISTRATOR EMAIL</label>
+              <div className="relative">
+                <input
+                  type="email"
+                  required
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="admin@msap.org"
+                  className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#494454]/40 outline-none focus:border-[#7BD0FF] transition-colors"
+                />
+                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#94A3B8] text-lg">
+                  badge
+                </span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-bold text-[#94A3B8] font-mono-code">PASSWORD</label>
+              <div className="relative">
+                <input
+                  type="password"
+                  required
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-sm text-white border border-[#494454]/40 outline-none focus:border-[#7BD0FF] transition-colors"
+                />
+                <span className="material-symbols-outlined absolute right-3 top-2.5 text-[#94A3B8] text-lg">
+                  lock
+                </span>
+              </div>
+            </div>
+
+            {loginError && (
+              <div className="p-3 rounded-xl bg-[#F43F5E]/15 border border-[#F43F5E]/40 text-[#F43F5E] text-xs font-semibold">
+                {loginError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full mt-2 py-3 rounded-xl bg-gradient-to-r from-[#8B5CF6] to-[#38BDF8] text-white font-bold text-sm shadow-[0_0_20px_rgba(139,92,246,0.4)] hover:shadow-[0_0_30px_rgba(139,92,246,0.6)] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-lg">
+                {isLoggingIn ? 'progress_activity' : 'login'}
+              </span>
+              <span>{isLoggingIn ? 'Verifying Credentials...' : 'Authenticate & Unlock Console'}</span>
+            </button>
+          </form>
+
+          {/* Credentials Helper */}
+          <div className="p-3 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-1 text-[11px] font-mono-code text-[#94A3B8]">
+            <span className="text-[#7BD0FF] font-bold">Default Council Credentials:</span>
+            <span>Email: <strong className="text-white">admin@msap.org</strong></span>
+            <span>Password: <strong className="text-white">ChangeMe@MSAP2026</strong></span>
+          </div>
+
+          <div className="text-center">
+            <a
+              href="/"
+              className="text-xs text-[#94A3B8] hover:text-[#7BD0FF] transition-colors underline"
+            >
+              Return to Public Ticket Portal
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ----------------------------------------------------
+  // AUTHENTICATED STATE: FULL ADMIN DASHBOARD & SCANNER
+  // ----------------------------------------------------
+  return (
+    <div className="min-h-screen bg-[#0B0F19] text-[#DFE2F1]">
+      {/* Top Admin Navigation Header */}
+      <header className="sticky top-0 z-40 bg-[#0B0F19]/95 backdrop-blur-md border-b border-[#262A35]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-[#8B5CF6] to-[#38BDF8] flex items-center justify-center text-white font-bold text-xs shadow-md">
+              MSAP
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-display-title font-bold text-white text-base">Admin Operations</span>
+                <span className="px-2 py-0.5 rounded bg-[#10B981]/15 text-[#10B981] text-[10px] font-mono-code font-bold border border-[#10B981]/30">
+                  MYSQL LIVE
+                </span>
+              </div>
+              <span className="text-[11px] text-[#94A3B8]">53rd Freshers' Meet 2026 • Gate Operations</span>
+            </div>
+          </div>
+
+          {/* Admin User Info & Logout */}
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="text-xs font-semibold text-white">{adminUser.email}</span>
+              <span className="text-[10px] font-mono-code text-[#7BD0FF] uppercase">{adminUser.role} ACCESS</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171B26] hover:bg-[#262A35] text-[#F43F5E] text-xs font-semibold border border-[#F43F5E]/30 transition-colors cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-sm">logout</span>
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Tab Selector Bar */}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 border-t border-[#262A35]/60 flex items-center gap-2 overflow-x-auto py-2">
+          <button
+            onClick={() => { setActiveTab('dashboard'); fetchDashboardStats(); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'dashboard'
+                ? 'bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white shadow-md'
+                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">analytics</span>
+            <span>Dashboard & Metrics</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('attendees'); fetchAttendeesList(); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'attendees'
+                ? 'bg-gradient-to-r from-[#8B5CF6] to-[#6366F1] text-white shadow-md'
+                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">group</span>
+            <span>Attendee Management & Payments</span>
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('scanner'); stopCamera(); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+              activeTab === 'scanner'
+                ? 'bg-gradient-to-r from-[#0EA5E9] to-[#38BDF8] text-[#0B0F19] shadow-md'
+                : 'text-[#94A3B8] hover:text-white hover:bg-[#171B26]'
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">qr_code_scanner</span>
+            <span>Live Camera QR Scanner & Admission</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Main Admin View Container */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* ================= TAB 1: DASHBOARD METRICS ================= */}
+        {activeTab === 'dashboard' && (
+          <div className="flex flex-col gap-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-display-title font-bold text-white">Event Operational Metrics</h2>
+                <p className="text-xs text-[#94A3B8]">Real-time telemetry directly queried from MySQL database</p>
+              </div>
+              <button
+                onClick={() => fetchDashboardStats()}
+                disabled={statsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#171B26] hover:bg-[#262A35] text-[#7BD0FF] text-xs font-semibold border border-[#262A35] cursor-pointer"
+              >
+                <span className={`material-symbols-outlined text-sm ${statsLoading ? 'animate-spin' : ''}`}>
+                  refresh
+                </span>
+                <span>Refresh Stats</span>
+              </button>
+            </div>
+
+            {/* 7 Core Required Metric Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+              {/* TOTAL REGISTERED */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#94A3B8] uppercase font-bold">TOTAL REGISTERED</span>
+                <span className="text-3xl font-bold font-display-title text-white">
+                  {stats?.total_registered ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#7BD0FF]">All candidates in registry</span>
+              </div>
+
+              {/* TOTAL PAID */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#10B981]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#10B981] uppercase font-bold">TOTAL PAID</span>
+                <span className="text-3xl font-bold font-display-title text-[#10B981]">
+                  {stats?.total_paid ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Confirmed UPI payments</span>
+              </div>
+
+              {/* PAYMENT PENDING */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-amber-500/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-amber-300 uppercase font-bold">PAYMENT PENDING</span>
+                <span className="text-3xl font-bold font-display-title text-amber-300">
+                  {stats?.payment_pending ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Awaiting council confirmation</span>
+              </div>
+
+              {/* TOTAL CHECKED IN */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#38BDF8]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#38BDF8] uppercase font-bold">TOTAL CHECKED IN</span>
+                <span className="text-3xl font-bold font-display-title text-[#38BDF8]">
+                  {stats?.total_checked_in ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Admitted past venue gate</span>
+              </div>
+
+              {/* NOT CHECKED IN */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#94A3B8] uppercase font-bold">NOT CHECKED IN</span>
+                <span className="text-3xl font-bold font-display-title text-[#DFE2F1]">
+                  {stats?.not_checked_in ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Yet to arrive at gate</span>
+              </div>
+
+              {/* TOTAL FRESHERS */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#F43F5E]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#F43F5E] uppercase font-bold">TOTAL FRESHERS</span>
+                <span className="text-3xl font-bold font-display-title text-[#F43F5E]">
+                  {stats?.total_freshers ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Class of 2026</span>
+              </div>
+
+              {/* TOTAL SENIORS */}
+              <div className="p-4 rounded-2xl bg-[#171B26] border border-[#A078FF]/30 flex flex-col gap-1">
+                <span className="text-[11px] font-mono-code text-[#A078FF] uppercase font-bold">TOTAL SENIORS</span>
+                <span className="text-3xl font-bold font-display-title text-[#A078FF]">
+                  {stats?.total_seniors ?? '...'}
+                </span>
+                <span className="text-[10px] text-[#94A3B8]">Senior hosts & council</span>
+              </div>
+            </div>
+
+            {/* Quick Actions Shortcuts */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+              <div
+                onClick={() => { setPaymentFilter('PENDING'); setActiveTab('attendees'); }}
+                className="p-5 rounded-2xl bg-[#171B26] hover:bg-[#262A35] border border-[#262A35] transition-all cursor-pointer flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-2xl">receipt_long</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-sm">Review Pending Payments</h3>
+                    <p className="text-xs text-[#94A3B8]">Verify UTR bank receipts and activate digital passes</p>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-white">chevron_right</span>
+              </div>
+
+              <div
+                onClick={() => setActiveTab('scanner')}
+                className="p-5 rounded-2xl bg-[#171B26] hover:bg-[#262A35] border border-[#262A35] transition-all cursor-pointer flex items-center justify-between"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-[#38BDF8]/20 text-[#38BDF8] flex items-center justify-center">
+                    <span className="material-symbols-outlined text-2xl">qr_code_scanner</span>
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-sm">Launch Gate QR Scanner</h3>
+                    <p className="text-xs text-[#94A3B8]">Fast admission turnstile with duplicate check protection</p>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-white">chevron_right</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ================= TAB 2: ATTENDEE MANAGEMENT & PAYMENTS ================= */}
+        {activeTab === 'attendees' && (
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-display-title font-bold text-white">Attendee Registry</h2>
+                <p className="text-xs text-[#94A3B8]">
+                  Showing {attendees.length} of {attendeesTotal} attendees registered in MySQL
+                </p>
+              </div>
+
+              {actionMessage && (
+                <div className="p-2 rounded-xl bg-[#171B26] border border-[#10B981]/40 text-xs font-mono-code text-[#10B981]">
+                  {actionMessage}
+                </div>
+              )}
+            </div>
+
+            {/* Filters and Search Bar */}
+            <div className="p-4 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-wrap items-center gap-3">
+              {/* Search */}
+              <div className="relative flex-1 min-w-[200px]">
+                <input
+                  type="text"
+                  placeholder="Search by Ticket ID, Name, Phone, Email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-[#0A0E18] px-3.5 py-2 pl-9 rounded-xl text-xs text-white border border-[#494454]/30 outline-none focus:border-[#7BD0FF]"
+                />
+                <span className="material-symbols-outlined absolute left-2.5 top-2 text-[#94A3B8] text-base">
+                  search
+                </span>
+              </div>
+
+              {/* Category Filter */}
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+              >
+                <option value="ALL">All Cohorts</option>
+                <option value="FRESHER">Fresher</option>
+                <option value="SENIOR">Senior</option>
+              </select>
+
+              {/* Payment Filter */}
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+              >
+                <option value="ALL">All Payments</option>
+                <option value="PAID">Paid</option>
+                <option value="PENDING">Pending</option>
+              </select>
+
+              {/* Check-In Filter */}
+              <select
+                value={checkInFilter}
+                onChange={(e) => setCheckInFilter(e.target.value)}
+                className="bg-[#0A0E18] px-3 py-2 rounded-xl text-xs text-[#DFE2F1] border border-[#494454]/30 outline-none cursor-pointer"
+              >
+                <option value="ALL">All Check-Ins</option>
+                <option value="CHECKED_IN">Checked In</option>
+                <option value="NOT_CHECKED_IN">Not Checked In</option>
+              </select>
+
+              <button
+                onClick={() => fetchAttendeesList()}
+                className="px-3 py-2 rounded-xl bg-[#262A35] hover:bg-[#353944] text-xs font-semibold text-white transition-colors cursor-pointer"
+              >
+                Apply
+              </button>
+            </div>
+
+            {/* Attendee Table */}
+            <div className="rounded-2xl bg-[#171B26] border border-[#262A35] overflow-hidden shadow-xl">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-[#0A0E18] text-[#94A3B8] font-mono-code text-[11px] uppercase border-b border-[#262A35]">
+                    <tr>
+                      <th className="px-4 py-3">Ticket ID</th>
+                      <th className="px-4 py-3">Candidate Name</th>
+                      <th className="px-4 py-3">Contact</th>
+                      <th className="px-4 py-3">College / Dept</th>
+                      <th className="px-4 py-3">Cohort</th>
+                      <th className="px-4 py-3">Payment</th>
+                      <th className="px-4 py-3">Check-In</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#262A35]">
+                    {attendeesLoading ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8]">
+                          <span className="material-symbols-outlined animate-spin text-2xl text-[#8B5CF6]">
+                            progress_activity
+                          </span>
+                          <p className="mt-1">Loading attendee records from MySQL...</p>
+                        </td>
+                      </tr>
+                    ) : attendees.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-[#94A3B8]">
+                          No attendee records matching your filters.
+                        </td>
+                      </tr>
+                    ) : (
+                      attendees.map((a) => (
+                        <tr key={a.id} className="hover:bg-[#1C1F2A] transition-colors">
+                          <td className="px-4 py-3 font-mono-code font-bold text-[#7BD0FF] whitespace-nowrap">
+                            {a.ticket_id}
+                          </td>
+                          <td className="px-4 py-3 font-semibold text-white whitespace-nowrap">
+                            {a.full_name}
+                          </td>
+                          <td className="px-4 py-3 text-[#94A3B8] whitespace-nowrap">
+                            <div>{a.phone}</div>
+                            <div className="text-[10px] text-[#494454]">{a.email}</div>
+                          </td>
+                          <td className="px-4 py-3 text-[#94A3B8] truncate max-w-[140px]">
+                            {a.college}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold ${
+                                a.category === 'SENIOR'
+                                  ? 'bg-[#0EA5E9]/20 text-[#38BDF8] border border-[#0EA5E9]/40'
+                                  : 'bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/40'
+                              }`}
+                            >
+                              {a.category}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold flex items-center gap-1 w-max ${
+                                a.payment_status === 'PAID'
+                                  ? 'bg-[#10B981]/20 text-[#10B981] border border-[#10B981]/40'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                              }`}
+                            >
+                              <span className={`w-1.5 h-1.5 rounded-full ${a.payment_status === 'PAID' ? 'bg-[#10B981]' : 'bg-amber-400'}`}></span>
+                              <span>{a.payment_status}</span>
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <span
+                              className={`px-2 py-0.5 rounded font-mono-code text-[10px] font-bold ${
+                                a.check_in_status === 'CHECKED_IN'
+                                  ? 'bg-[#10B981]/20 text-[#10B981]'
+                                  : 'bg-[#262A35] text-[#94A3B8]'
+                              }`}
+                            >
+                              {a.check_in_status === 'CHECKED_IN' ? 'CHECKED IN' : 'NOT ARRIVED'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right whitespace-nowrap">
+                            <button
+                              onClick={() => setSelectedAttendee(a)}
+                              className="px-2.5 py-1 rounded-lg bg-[#262A35] hover:bg-[#353944] text-[#7BD0FF] text-xs font-semibold cursor-pointer"
+                            >
+                              View / Verify
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Attendee Details & Payment Approval Modal */}
+            {selectedAttendee && (
+              <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+                <div className="bg-[#171B26] border border-[#262A35] rounded-2xl max-w-lg w-full p-6 shadow-2xl flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-[#262A35] pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono-code font-bold text-lg text-[#7BD0FF]">
+                        {selectedAttendee.ticket_id}
+                      </span>
+                      <span
+                        className={`px-2 py-0.5 rounded font-mono-code text-xs font-bold ${
+                          selectedAttendee.category === 'SENIOR' ? 'bg-sky-500/20 text-sky-400' : 'bg-rose-500/20 text-rose-400'
+                        }`}
+                      >
+                        {selectedAttendee.category}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => setSelectedAttendee(null)}
+                      className="text-[#94A3B8] hover:text-white cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  </div>
+
+                  {/* Information Grid */}
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">FULL NAME</span>
+                      <span className="font-bold text-white text-sm">{selectedAttendee.full_name}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">PHONE</span>
+                      <span className="font-semibold text-white">{selectedAttendee.phone}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">EMAIL</span>
+                      <span className="font-semibold text-white truncate">{selectedAttendee.email}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">COLLEGE / DEPT</span>
+                      <span className="font-semibold text-white truncate">{selectedAttendee.college}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">STUDENT ROLL ID</span>
+                      <span className="font-semibold text-white">{selectedAttendee.student_roll_id || 'N/A'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[#94A3B8] font-mono-code">PAYMENT UTR</span>
+                      <span className="font-mono-code font-bold text-[#38BDF8]">
+                        {selectedAttendee.payment_utr || 'Direct Portal Intake'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Payment Approval Control */}
+                  <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono-code text-[#94A3B8]">PAYMENT STATUS</span>
+                      <span
+                        className={`px-2.5 py-0.5 rounded font-mono-code text-xs font-bold ${
+                          selectedAttendee.payment_status === 'PAID'
+                            ? 'bg-[#10B981]/20 text-[#10B981]'
+                            : 'bg-amber-500/20 text-amber-300'
+                        }`}
+                      >
+                        {selectedAttendee.payment_status}
+                      </span>
+                    </div>
+
+                    {selectedAttendee.payment_status === 'PENDING' ? (
+                      <div className="flex flex-col gap-2 mt-2">
+                        <p className="text-xs text-amber-300/90 leading-relaxed">
+                          ⚠️ Attendee payment is pending verification. Confirming payment will activate their unique QR entry code and digital entry pass.
+                        </p>
+                        <button
+                          onClick={() => handleConfirmPayment(selectedAttendee.id)}
+                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-[#10B981] to-[#059669] text-white font-bold text-xs shadow-md hover:brightness-110 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined text-sm">check_circle</span>
+                          <span>CONFIRM PAYMENT (PENDING → PAID)</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-[#10B981] flex items-center gap-1.5 mt-1">
+                        <span className="material-symbols-outlined text-sm">verified</span>
+                        <span>
+                          Payment confirmed by {selectedAttendee.payment_confirmed_by || 'Admin'}. Pass is active for gate scanning.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Check-In Status */}
+                  <div className="p-3 rounded-xl bg-[#0A0E18] border border-[#262A35] flex items-center justify-between text-xs font-mono-code">
+                    <span className="text-[#94A3B8]">CHECK-IN ADMITTANCE</span>
+                    <span className={selectedAttendee.check_in_status === 'CHECKED_IN' ? 'text-[#10B981] font-bold' : 'text-slate-400'}>
+                      {selectedAttendee.check_in_status === 'CHECKED_IN'
+                        ? `CHECKED IN AT ${selectedAttendee.check_in_time || 'GATE'}`
+                        : 'NOT YET ADMITTED'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      onClick={() => setSelectedAttendee(null)}
+                      className="px-4 py-2 rounded-xl bg-[#262A35] hover:bg-[#353944] text-white text-xs font-semibold cursor-pointer"
+                    >
+                      Close
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ================= TAB 3: LIVE CAMERA QR SCANNER & ADMISSION ================= */}
+        {activeTab === 'scanner' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            {/* Left: Camera / Scanner Feed (6 Cols) */}
+            <div className="lg:col-span-6 flex flex-col gap-4">
+              <div className="p-5 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col gap-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[#38BDF8]">videocam</span>
+                    <h3 className="font-bold text-white text-base">Gate Camera Feed</h3>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {cameraActive ? (
+                      <button
+                        onClick={stopCamera}
+                        className="px-3 py-1 rounded-lg bg-[#F43F5E]/20 text-[#F43F5E] text-xs font-semibold border border-[#F43F5E]/30 cursor-pointer"
+                      >
+                        Stop Camera
+                      </button>
+                    ) : (
+                      <button
+                        onClick={startCamera}
+                        className="px-3 py-1 rounded-lg bg-[#10B981]/20 text-[#10B981] text-xs font-semibold border border-[#10B981]/30 cursor-pointer"
+                      >
+                        Start Camera
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Video Viewport / Viewfinder */}
+                <div className="relative aspect-video w-full rounded-xl bg-[#0A0E18] border-2 border-dashed border-[#262A35] flex items-center justify-center overflow-hidden">
+                  {cameraActive ? (
+                    <>
+                      <video
+                        ref={videoRef}
+                        className="w-full h-full object-cover"
+                        playsInline
+                        muted
+                      />
+                      {/* Scanning Target Overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div className="w-48 h-48 rounded-xl border-2 border-[#38BDF8] shadow-[0_0_20px_rgba(56,189,248,0.4)] relative animate-pulse">
+                          <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#38BDF8] shadow-[0_0_10px_#38BDF8] animate-bounce"></div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-center p-4">
+                      <span className="material-symbols-outlined text-4xl text-[#94A3B8]">
+                        qr_code_scanner
+                      </span>
+                      <p className="text-xs text-[#94A3B8]">
+                        Click "Start Camera" to scan passes with your webcam / phone, or use the manual token entry below.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {cameraError && (
+                  <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs">
+                    {cameraError}
+                  </div>
+                )}
+
+                {/* Manual Barcode / QR Token Entry Input */}
+                <div className="flex flex-col gap-1.5 pt-2 border-t border-[#262A35]">
+                  <label className="text-xs font-mono-code font-bold text-[#94A3B8]">
+                    MANUAL QR TOKEN / BARCODE SCANNER INPUT
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="Paste or scan QR Token / Access Token..."
+                      value={scannerTokenInput}
+                      onChange={(e) => setScannerTokenInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleVerifyQr(scannerTokenInput)}
+                      className="w-full bg-[#0A0E18] px-3.5 py-2.5 rounded-xl text-xs font-mono-code text-white border border-[#494454]/30 outline-none focus:border-[#38BDF8]"
+                    />
+                    <button
+                      onClick={() => handleVerifyQr(scannerTokenInput)}
+                      disabled={scanLoading || !scannerTokenInput.trim()}
+                      className="px-4 py-2.5 rounded-xl bg-[#38BDF8] hover:bg-[#7BD0FF] text-[#0B0F19] font-bold text-xs shrink-0 cursor-pointer disabled:opacity-50"
+                    >
+                      {scanLoading ? 'Checking...' : 'Verify'}
+                    </button>
+                  </div>
+                  <span className="text-[10px] text-[#94A3B8]">
+                    Supports handheld USB barcode scanners and copy-pasted QR tokens.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Verification & Admittance Decision Panel (6 Cols) */}
+            <div className="lg:col-span-6 flex flex-col gap-4">
+              {checkInSuccessMsg && (
+                <div className="p-4 rounded-2xl bg-[#10B981]/20 border border-[#10B981] text-[#10B981] font-bold text-sm shadow-[0_0_20px_rgba(16,185,129,0.3)] flex items-center gap-2">
+                  <span className="material-symbols-outlined text-2xl">celebration</span>
+                  <span>{checkInSuccessMsg}</span>
+                </div>
+              )}
+
+              {scanResult ? (
+                <div className="p-6 rounded-2xl bg-[#171B26] border border-[#262A35] shadow-xl flex flex-col gap-5">
+                  {/* CASE 1: VALID TICKET */}
+                  {scanResult.status === 'VALID' && scanResult.attendee && (
+                    <>
+                      <div className="p-3.5 rounded-xl bg-[#10B981]/20 border border-[#10B981]/50 text-[#10B981] flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-2xl">check_circle</span>
+                          <span className="font-bold text-sm font-mono-code">✅ VALID TICKET • READY FOR ENTRY</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded bg-[#10B981] text-[#0B0F19] font-bold text-[10px]">
+                          PAID
+                        </span>
+                      </div>
+
+                      {/* Candidate Identity Card */}
+                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2.5">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono-code text-xl font-bold text-[#7BD0FF]">
+                            {scanResult.attendee.ticket_id}
+                          </span>
+                          <span
+                            className={`px-2.5 py-0.5 rounded font-mono-code text-xs font-bold ${
+                              scanResult.attendee.category === 'SENIOR'
+                                ? 'bg-sky-500/20 text-sky-300'
+                                : 'bg-rose-500/20 text-rose-300'
+                            }`}
+                          >
+                            {scanResult.attendee.category}
+                          </span>
+                        </div>
+
+                        <div className="text-base font-bold text-white">
+                          {scanResult.attendee.full_name}
+                        </div>
+
+                        <div className="text-xs text-[#94A3B8] grid grid-cols-2 gap-2 pt-1 border-t border-[#262A35]">
+                          <div>College: <span className="text-white">{scanResult.attendee.college}</span></div>
+                          <div>Phone: <span className="text-white">{scanResult.attendee.phone}</span></div>
+                        </div>
+                      </div>
+
+                      {/* Confirm Admittance Action */}
+                      <button
+                        onClick={() => handleConfirmEntry(scanResult.attendee!.id)}
+                        disabled={checkInLoading}
+                        className="w-full py-4 rounded-xl bg-gradient-to-r from-[#10B981] via-[#059669] to-[#047857] text-white font-bold text-base shadow-[0_0_24px_rgba(16,185,129,0.45)] hover:shadow-[0_0_32px_rgba(16,185,129,0.65)] hover:scale-[1.01] transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <span className="material-symbols-outlined text-2xl">door_front</span>
+                        <span>{checkInLoading ? 'Recording Transaction in MySQL...' : 'CONFIRM ENTRY (ADMIT ATTENDEE)'}</span>
+                      </button>
+                    </>
+                  )}
+
+                  {/* CASE 2: ALREADY CHECKED IN (ANTI-PASSBACK) */}
+                  {scanResult.status === 'ALREADY_CHECKED_IN' && scanResult.attendee && (
+                    <div className="flex flex-col gap-4">
+                      <div className="p-3.5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E]/50 text-[#F43F5E] flex items-center gap-2">
+                        <span className="material-symbols-outlined text-2xl">warning</span>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm font-mono-code">⚠️ ALREADY CHECKED IN (ENTRY REJECTED)</span>
+                          <span className="text-xs text-white/90">
+                            Admitted earlier at {scanResult.attendee.check_in_time || 'earlier session'}. Anti-passback triggered.
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2 text-xs">
+                        <div>Attendee: <strong className="text-white text-sm">{scanResult.attendee.full_name}</strong></div>
+                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id}</strong></div>
+                        <div>Category: <strong className="text-white">{scanResult.attendee.category}</strong></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* CASE 3: PAYMENT PENDING */}
+                  {scanResult.status === 'PAYMENT_PENDING' && scanResult.attendee && (
+                    <div className="flex flex-col gap-4">
+                      <div className="p-3.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-2xl">hourglass_top</span>
+                        <div className="flex flex-col">
+                          <span className="font-bold text-sm font-mono-code">⚠️ PAYMENT NOT CONFIRMED</span>
+                          <span className="text-xs text-white/90">
+                            Ticket registered, but ₹350 fee has not been marked as PAID in MySQL.
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="p-4 rounded-xl bg-[#0A0E18] border border-[#262A35] flex flex-col gap-2 text-xs">
+                        <div>Attendee: <strong className="text-white text-sm">{scanResult.attendee.full_name}</strong></div>
+                        <div>Ticket ID: <strong className="text-[#7BD0FF] font-mono-code">{scanResult.attendee.ticket_id}</strong></div>
+                      </div>
+
+                      <button
+                        onClick={async () => {
+                          await handleConfirmPayment(scanResult.attendee!.id);
+                          await handleVerifyQr(scannerTokenInput);
+                        }}
+                        className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-[#0B0F19] font-bold text-xs cursor-pointer shadow-md transition-all"
+                      >
+                        Confirm Payment Now & Enable Admission
+                      </button>
+                    </div>
+                  )}
+
+                  {/* CASE 4: INVALID TICKET */}
+                  {scanResult.status === 'INVALID' && (
+                    <div className="p-5 rounded-xl bg-[#F43F5E]/20 border border-[#F43F5E] text-[#F43F5E] flex items-center gap-3">
+                      <span className="material-symbols-outlined text-3xl">cancel</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-base font-mono-code">❌ INVALID TICKET</span>
+                        <span className="text-xs text-white/80 mt-1">
+                          {scanResult.message || 'QR code signature does not exist in MySQL database.'}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="p-8 rounded-2xl bg-[#171B26] border border-[#262A35] flex flex-col items-center justify-center text-center gap-2 min-h-[260px]">
+                  <span className="material-symbols-outlined text-4xl text-[#94A3B8]">
+                    fingerprint
+                  </span>
+                  <h4 className="font-bold text-white text-sm">Awaiting Pass Scan</h4>
+                  <p className="text-xs text-[#94A3B8] max-w-xs">
+                    Scan student QR token or input manual ID on the left to verify admission rights and gate check-in status.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};

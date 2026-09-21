@@ -1,0 +1,124 @@
+@import "tailwindcss";
+
+@theme {
+  --color-midnight-base: #0B0F19;
+  --color-midnight-surface: #111827;
+  --color-card-glass: #1E2235;
+  --color-text-primary: #F8FAFC;
+  --color-text-muted: #94A3B8;
+  --color-festive-rose: #F43F5E;
+  --color-neon-pink: #EC4899;
+  --color-electric-cyan: #38BDF8;
+  --color-electric-blue-deep: #0EA5E9;
+  --color-gradient-start: #8B5CF6;
+  --color-gradient-end: #6366F1;
+  --color-status-success: #10B981;
+  
+  --color-primary: #d0bcff;
+  --color-on-primary: #3c0091;
+  --color-primary-container: #a078ff;
+  --color-on-primary-container: #340080;
+  
+  --color-secondary: #7bd0ff;
+  --color-on-secondary: #00354a;
+  --color-secondary-fixed: #c4e7ff;
+  
+  --color-tertiary-container: #ff516a;
+  
+  --color-surface-container-lowest: #0a0e18;
+  --color-surface-container-low: #171b26;
+  --color-surface-container: #1c1f2a;
+  --color-surface-container-high: #262a35;
+  --color-surface-container-highest: #313540;
+  --color-surface-bright: #353944;
+  
+  --color-on-surface: #dfe2f1;
+  --color-on-surface-variant: #cbc3d7;
+  --color-outline-variant: #494454;
+  
+  --spacing-space-xs: 0.25rem;
+  --spacing-space-sm: 0.5rem;
+  --spacing-space-md: 1rem;
+  --spacing-space-lg: 1.5rem;
+  --spacing-space-xl: 2.5rem;
+  --spacing-margin: 1.25rem;
+  --spacing-margin-desktop: 3rem;
+
+  --font-display-title: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif;
+  --font-mono-code: 'JetBrains Mono', monospace;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background-color: #0B0F19;
+    color: #DFE2F1;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+  }
+}
+
+.font-mono-code { font-family: 'JetBrains Mono', monospace; }
+.font-display-title { font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; }
+.font-label-caps {
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+.font-headline-sm {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.font-headline-md {
+  font-size: 24px;
+  line-height: 32px;
+  letter-spacing: -0.01em;
+  font-weight: 600;
+}
+.font-headline-lg {
+  font-size: 34px;
+  line-height: 42px;
+  letter-spacing: -0.02em;
+  font-weight: 700;
+}
+.font-display-hero {
+  font-size: 48px;
+  line-height: 56px;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+@media (min-width: 640px) {
+  .font-display-hero {
+    font-size: 52px;
+    line-height: 60px;
+  }
+}
+.font-body-sm {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 400;
+}
+.font-body-md {
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 400;
+}
+.font-body-lg {
+  font-size: 18px;
+  line-height: 28px;
+  font-weight: 400;
+}
+.font-label-md {
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+}
+.font-label-lg {
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0.01em;
+  font-weight: 600;
+}
